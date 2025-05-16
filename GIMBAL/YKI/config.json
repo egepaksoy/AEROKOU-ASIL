@@ -1,0 +1,29 @@
+{
+    "DRONE":
+    {
+        "id": 2,
+        "port": "com6",
+        "alt": 5,
+        "rtl-alt": 5
+    },
+    "TCP":
+    {
+        "ip": "192.168.0.120",
+        "port": 9998
+    },
+    "UDP":
+    {
+        "ip": "0.0.0.0",
+        "port": 9999
+    },
+    "AI":
+    {
+        "model-path": "./models/kullanilcak.pt",
+        "udp-active": true,
+        "camera-path": 0
+    },
+    "ARDUINO":
+    {
+        "port": "com3"
+    }
+}
