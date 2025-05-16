@@ -12,6 +12,53 @@ import image_processing_handler
 import math
 import keyboard
 
+def failsafe(vehicle, home_pos=None, config: json=None):
+    def failsafe_drone_id(vehicle, drone_id, home_pos=None):
+        if home_pos == None:
+            print(f"{drone_id}>> Failsafe alıyor")
+            vehicle.set_mode(mode="RTL", drone_id=drone_id)
+
+        # guıdedli rtl
+        else:
+            print(f"{drone_id}>> Failsafe alıyor")
+            vehicle.set_mode(mode="GUIDED", drone_id=drone_id)
+
+            alt = 5
+            if config != None:
+                if "DRONE" in config:
+                    if "rtl-alt" in config["DRONE"]:
+                        alt = config["DRONE"]["rtl-alt"]
+            
+            vehicle.go_to(loc=home_pos, alt=alt, drone_id=DRONE_ID)
+
+            start_time = time.time()
+            while True:
+                if time.time() - start_time > 3:
+                    print(f"{drone_id}>> RTL Alıyor...")
+                    start_time = time.time()
+
+                if vehicle.on_location(loc=home_pos, seq=0, sapma=1, drone_id=DRONE_ID):
+                    print(f"{DRONE_ID}>> iniş gerçekleşiyor")
+                    vehicle.set_mode(mode="LAND", drone_id=DRONE_ID)
+                    break
+
+    thraeds = []
+    for d_id in vehicle.drone_ids:
+        args = (vehicle, d_id)
+        if home_pos != None:
+            args = (vehicle, d_id, home_pos)
+
+        thrd = threading.Thread(target=failsafe_drone_id, args=args)
+        thrd.start()
+        thraeds.append(thrd)
+
+
+    for t in thraeds:
+        t.join()
+
+    print(f"{vehicle.drone_ids} id'li Drone(lar) Failsafe aldi")
+
+
 
 def keyboard_controller(server: tcp_handler.TCPServer, config):
     ters = -1
