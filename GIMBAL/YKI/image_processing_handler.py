@@ -156,6 +156,88 @@ class Handler:
             
             buffer += packet_data  # Gelen veri parçasını tampona ekle
     
+    def udp_camera_new(self, ip, port):
+        BUFFER_SIZE = 65536
+        HEADER_FMT = '<LHB'
+        HEADER_SIZE = struct.calcsize(HEADER_FMT)
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((ip, port))
+
+        buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
+        expected_counts = {}  # {frame_id: total_chunks, …}
+
+        while self.is_running:
+            packet, _ = sock.recvfrom(BUFFER_SIZE)
+            frame_id, chunk_id, is_last = struct.unpack(HEADER_FMT, packet[:HEADER_SIZE])
+            chunk_data = packet[HEADER_SIZE:]
+            
+            # Kaydet
+            if frame_id not in buffers:
+                buffers[frame_id] = {}
+            buffers[frame_id][chunk_id] = chunk_data
+            
+            # Toplam parça sayısını son pakette işaretle
+            if is_last:
+                expected_counts[frame_id] = chunk_id + 1
+
+            # Hepsi geldiyse işle
+            if frame_id in expected_counts and len(buffers[frame_id]) == expected_counts[frame_id]:
+                # Birleştir
+                data = b''.join(buffers[frame_id][i] for i in range(expected_counts[frame_id]))
+                frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+                
+                if frame is not None:
+                    frame = cv2.flip(frame, -1)
+                    if self.proccessing and self.model != None:
+                        results = self.model(frame)
+                        for r in results:
+                            boxes = r.boxes
+                            for box in boxes:
+                                if box.conf[0] < 0.90:
+                                    continue
+                                # Sınırlayıcı kutu koordinatlarını al
+                                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+
+                                # Sınıf ve güven skorunu al
+                                cls = int(box.cls[0].item())
+                                conf = box.conf[0].item()
+
+                                # Sınıf adını al
+                                class_name = self.model.names[cls]
+
+                                # Bilgileri ekrana yazdır
+                                print(f"Sınıf: {class_name}, Güven: {conf:.2f}, Konum: ({x1:.0f}, {y1:.0f}, {x2:.0f}, {y2:.0f}")
+
+                                # Nesneyi çerçeve içine al ve etiketle
+                                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                                cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1 - 10)), 
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+                if self.show_crosshair:
+                    height, width, _ = frame.shape
+
+                    # Ortadaki + işaretinin koordinatları
+                    center_x = width // 2
+                    center_y = height // 2
+                    cross_size = 20  # Artı işaretinin uzunluğu
+
+                    # Yatay çizgi
+                    cv2.line(frame, (center_x - cross_size, center_y), (center_x + cross_size, center_y), self.crosshair_color, 2)
+                    # Dikey çizgi
+                    cv2.line(frame, (center_x, center_y - cross_size), (center_x, center_y + cross_size), self.crosshair_color, 2)
+
+                if self.showing_image:
+                    cv2.imshow("udp image", frame)
+
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+        
+        # Temizlik
+        del buffers[frame_id], expected_counts[frame_id]
+
+
+    
     def show_hide_crosshair(self, show):
         self.show_crosshair = show
     

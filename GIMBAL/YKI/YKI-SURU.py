@@ -105,7 +105,8 @@ config = json.load(open("./config.json"))
 stop_event = threading.Event()
 
 camera = image_processing_handler.Handler()
-camera_thread = threading.Thread(target=camera.udp_camera, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
+#!camera_thread = threading.Thread(target=camera.udp_camera, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
+camera_thread = threading.Thread(target=camera.udp_camera_new, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
 camera_thread.start()
 
 server = tcp_handler.TCPServer(port=config["TCP"]["port"])

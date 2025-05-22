@@ -109,7 +109,8 @@ config = json.load(open("./config.json"))
 stop_event = threading.Event()
 
 camera = image_processing_handler.Handler()
-camera_thread = threading.Thread(target=camera.udp_camera, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
+#!camera_thread = threading.Thread(target=camera.udp_camera, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
+camera_thread = threading.Thread(target=camera.udp_camera_new, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
 camera_thread.start()
 
 server = tcp_handler.TCPServer(port=config["TCP"]["port"])
@@ -151,8 +152,10 @@ try:
                 tcp_data = ""
                 continue
             
-            target_loc = calc_loc.calc_location(current_loc=vehicle.get_pos(), yaw_angle=vehicle.get_yaw(), tcp_data=tcp_data, DEG=vehicle.DEG)
+            current_loc = vehicle.get_pos(drone_id=DRONE_ID)
+            target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=vehicle.get_yaw(), tcp_data=tcp_data, DEG=vehicle.DEG)
             print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
+            print(f"{DRONE_ID}>> hedefe mesafe: {distance(target_loc, current_loc)}")
             break
 
     #? 2. aşama (tcp verisine gidiliyor)
