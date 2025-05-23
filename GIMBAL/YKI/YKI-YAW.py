@@ -106,14 +106,25 @@ def joystick_controller(server: tcp_handler.TCPServer, config):
 
             turn_data_queue.put(joystick_data)
 
-def turn_yaw(vehicle, drone_id, turn_data_queue: queue.Queue):
+def turn_yaw(vehicle, drone_id, turn_data_queue: queue.Queue, rasp_data_queue: queue.Queue):
     while not stop_event.is_set():
-        if not turn_data_queue.empty() and taraniyor.is_set():
-            data = turn_data_queue.get_nowait()
+        if not rasp_data_queue.empty():
+            rasp_data = rasp_data_queue.get_nowait()
+            if rasp_data != None:
+                print(rasp_data)
+                if int(rasp_data.strip().split("|")[0]) >= 165 or int(rasp_data.strip().split("|")[0]) <= 15:
+                    if not turn_data_queue.empty() and taraniyor.is_set():
+                        data = turn_data_queue.get_nowait()
 
-            angle = int(data.strip().split("|")[0]) * 7
-            if angle != 0:
-                vehicle.turn_way(angle, drone_id=drone_id)
+                        angle = int(data.strip().split("|")[0]) * 7
+                        if angle != 0:
+                            vehicle.turn_way(angle, drone_id=drone_id)
+    
+def get_rasp_data(server, rasp_data_queue: queue.Queue):
+    while not stop_event.is_set():
+        server_data = server.get_data()
+        rasp_data_queue.put(server_data)
+
 
 config = json.load(open("./config.json"))
 
@@ -140,7 +151,9 @@ DRONE_ID = int(drone_config["id"])
 target_loc = []
 home_pos = []
 
-threading.Thread(target=turn_yaw, args=(vehicle, DRONE_ID, turn_data_queue), daemon=True).start()
+rasp_data_queue = queue.Queue()
+threading.Thread(target=get_rasp_data, args=(server, rasp_data_queue), daemon=True).start()
+threading.Thread(target=turn_yaw, args=(vehicle, DRONE_ID, turn_data_queue, rasp_data_queue), daemon=True).start()
 
 try:
     vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)

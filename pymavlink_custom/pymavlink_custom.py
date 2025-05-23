@@ -382,13 +382,16 @@ class Vehicle():
             print(f"{drone_id}>> Waypoint gönderme sırasında hata oluştu: {e}")
 
     # Dronu guided modunda hareket ettirir
-    def go_to(self, loc, alt, drone_id: int=None):
+    def go_to(self, loc, alt: int=None, drone_id: int=None):
         if drone_id is None:
             drone_id = self.drone_id
 
         try:
             if len(loc) != 2:
                 Exception(f"Geçersiz konum: {loc}")
+            
+            if alt == None:
+                alt = self.get_pos(drone_id=drone_id)[2]
 
             lat = loc[0]
             lon = loc[1]

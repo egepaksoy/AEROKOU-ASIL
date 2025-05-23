@@ -189,7 +189,6 @@ try:
                 data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
                 arduino.send_to_arduino(data)
 
-            if "2|2" in data:
                 distance = get_distance()
 
                 if distance == None:
