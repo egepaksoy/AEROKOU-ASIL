@@ -754,7 +754,34 @@ class Vehicle():
             if time.time() - start_time > 5:
                 return None
 
+    # Dronu sağa veya sola döndürür
+    def turn_way(self, turn_angle, default_speed: int=30, drone_id: int=None):
+        if drone_id is None:
+            drone_id = self.drone_id
+        
+        try:
+            if turn_angle > 0:
+                clock_wise = 1
+            else:
+                clock_wise = -1
+                turn_angle *= -1
 
+            self.vehicle.mav.command_long_send(
+                drone_id,
+                self.vehicle.target_component, # Hedef bileşen ID
+                mavutil.mavlink.MAV_CMD_CONDITION_YAW, # Yaw kontrol komutu
+                0,                       # Confirmation (0: İlk komut)
+                int(turn_angle),               # Yaw açısı
+                default_speed,                      # Dönüş hızı (derece/saniye)
+                clock_wise,                       # Yön (1: Saat yönü, -1: Saat tersi)
+                1,           # Açı göreceli mi? (0: Global, 1: Relative)
+                0, 0, 0                  # Kullanılmayan parametreler
+            )
+            
+        except Exception as e:
+            return e
+
+    # Drone etrafında bir tur döner
     def turn_around(self, default_speed: int=30, drone_id: int=None):
         if drone_id is None:
             drone_id = self.drone_id
