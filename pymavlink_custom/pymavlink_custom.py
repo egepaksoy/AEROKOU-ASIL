@@ -467,8 +467,9 @@ class Vehicle():
             alt = self.get_pos(drone_id=drone_id)[2]
 
         try:
+            print(f"{drone_id}>> Manuel RTL Alıyor....")
             self.set_mode(mode="GUIDED", drone_id=drone_id)
-            self.go_to(lat=takeoff_pos[0], lon=takeoff_pos[1], alt=alt, drone_id=drone_id)
+            self.go_to(loc=takeoff_pos, alt=alt, drone_id=drone_id)
             print(f"{drone_id}>> kalkış konumuna ({takeoff_pos}) dönüyor...")
 
             start_time = time.time()
