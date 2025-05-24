@@ -179,16 +179,15 @@ try:
         arduino = serial_handler.Serial_Control(port=config["ARDUINO"]["port"])
         print(f"Arduino {config['ARDUINO']['port']} portundan bağlandı")
 
+        timer = time.time()
+        arduino_val = ""
         while not stop_event.is_set():
             data = client.get_data()
+
             if data == None:
                 continue
 
-            if "|" in data:
-                data = data.strip()
-                data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
-                arduino.send_to_arduino(data)
-
+            if "2|2" in data:
                 distance = get_distance()
 
                 if distance == None:
@@ -203,6 +202,17 @@ try:
 
                     if "|" in arduino_val:
                         client.send_data(data=f"{distance}|{arduino_val.split('|')[0]}|{arduino_val.split('|')[1]}")
+
+            elif "|" in data:
+                data = data.strip()
+                data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
+                arduino.send_to_arduino(data)
+
+                arduino_val = arduino.read_value().strip()
+
+                if "|" in arduino_val:
+                    print(arduino_val)
+                    client.send_data(arduino_val)
 
 except KeyboardInterrupt:
     print("CTRL+C ile cikldi")

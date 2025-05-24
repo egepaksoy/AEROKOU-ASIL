@@ -11,7 +11,6 @@ import serial_handler
 import image_processing_handler
 import math
 import keyboard
-import queue
 
 def failsafe(vehicle, home_pos=None, config: json=None):
     def failsafe_drone_id(vehicle, drone_id, home_pos=None):
@@ -60,7 +59,8 @@ def failsafe(vehicle, home_pos=None, config: json=None):
     print(f"{vehicle.drone_ids} id'li Drone(lar) Failsafe aldi")
 
 
-def keyboard_controller(server: tcp_handler.TCPServer, turn_data_queue):
+def keyboard_controller(vehicle, server: tcp_handler.TCPServer):
+    global rasp_data
     ters = -1
 
     while not stop_event.is_set():
@@ -87,7 +87,17 @@ def keyboard_controller(server: tcp_handler.TCPServer, turn_data_queue):
         ser_data = f"{ser_x}|{ser_y}\n"
         server.send_data(ser_data)
 
-        turn_data_queue.put(ser_data)
+        rasp_data = server.get_data()
+
+        if rasp_data is not None and rasp_data != "":
+            if len(rasp_data.split("|")) == 2:
+                x_data = int(rasp_data.strip().split("|")[0])
+            elif len(rasp_data.split("|")) == 3:
+                x_data = int(rasp_data.strip().split("|")[1])
+            
+            if (x_data >= 120 or x_data <= -40):
+                print("Donuyor")
+                vehicle.turn_way(turn_angle=ser_x * 10, drone_id=DRONE_ID)
 
         time.sleep(0.05)
 
@@ -104,32 +114,10 @@ def joystick_controller(server: tcp_handler.TCPServer, config):
                 joystick_data = f"{joystick_data.split('|')[0]}|{joystick_data.split('|')[1]}\n"
             server.send_data(joystick_data)
 
-            turn_data_queue.put(joystick_data)
-
-def turn_yaw(vehicle, drone_id, turn_data_queue: queue.Queue, rasp_data_queue: queue.Queue):
-    while not stop_event.is_set():
-        if not rasp_data_queue.empty():
-            rasp_data = rasp_data_queue.get_nowait()
-            if rasp_data != None:
-                print(rasp_data)
-                if int(rasp_data.strip().split("|")[0]) >= 165 or int(rasp_data.strip().split("|")[0]) <= 15:
-                    if not turn_data_queue.empty() and taraniyor.is_set():
-                        data = turn_data_queue.get_nowait()
-
-                        angle = int(data.strip().split("|")[0]) * 7
-                        if angle != 0:
-                            vehicle.turn_way(angle, drone_id=drone_id)
-    
-def get_rasp_data(server, rasp_data_queue: queue.Queue):
-    while not stop_event.is_set():
-        server_data = server.get_data()
-        rasp_data_queue.put(server_data)
-
-
 config = json.load(open("./config.json"))
 
 stop_event = threading.Event()
-taraniyor = threading.Event()
+rasp_data = ""
 
 camera = image_processing_handler.Handler()
 #!camera_thread = threading.Thread(target=camera.udp_camera, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
@@ -138,22 +126,17 @@ camera_thread.start()
 
 server = tcp_handler.TCPServer(port=config["TCP"]["port"])
 
-turn_data_queue = queue.Queue()
-threading.Thread(target=keyboard_controller, args=(server, turn_data_queue), daemon=True).start()
-#!threading.Thread(target=joystick_controller, args=(server, config, turn_data_queue), daemon=True).start()
-
 drone_config = config["DRONE"]
 
 vehicle = Vehicle(drone_config["port"])
+
+threading.Thread(target=keyboard_controller, args=(vehicle, server), daemon=True).start()
+#!threading.Thread(target=joystick_controller, args=(server, config), daemon=True).start()
 
 ALT = drone_config["alt"]
 DRONE_ID = int(drone_config["id"])
 target_loc = []
 home_pos = []
-
-rasp_data_queue = queue.Queue()
-threading.Thread(target=get_rasp_data, args=(server, rasp_data_queue), daemon=True).start()
-threading.Thread(target=turn_yaw, args=(vehicle, DRONE_ID, turn_data_queue, rasp_data_queue), daemon=True).start()
 
 try:
     vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
@@ -166,25 +149,24 @@ try:
     print(f"{DRONE_ID}>> hedefleri arıyor...")
 
     #? 1. aşama (tcp verisi bekleniyor)
-    taraniyor.set()
     start_time = time.time()
     while True:
-        tcp_data = server.get_data()
         if time.time() - start_time > 5:
             print(f"{DRONE_ID}>> hedefler aranıyor...")
             start_time = time.time()
         
-        if tcp_data != None:
-            print(tcp_data.split("|"))
-            if calc_loc.check_data(tcp_data) == False:
-                print("Hedef bozuk alındı yeni hedef bekleniyor")
-                tcp_data = ""
-                continue
-            
-            current_loc = vehicle.get_pos(drone_id=DRONE_ID)
-            target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=vehicle.get_yaw(), tcp_data=tcp_data, DEG=vehicle.DEG)
-            print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
-            break
+        rasp_data = server.get_data()
+        if rasp_data != None:
+            if len(rasp_data.split("|")) == 3:
+                print(rasp_data.split("|"))
+                if calc_loc.check_data(rasp_data) == False:
+                    print("Hedef bozuk alındı yeni hedef bekleniyor")
+                    continue
+                
+                current_loc = vehicle.get_pos(drone_id=DRONE_ID)
+                target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=vehicle.get_yaw(), tcp_data=rasp_data, DEG=vehicle.DEG)
+                print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
+                break
 
     #? 2. aşama (tcp verisine gidiliyor)
     if target_loc != []:
@@ -242,4 +224,3 @@ finally:
     if not stop_event.is_set():
         stop_event.set()
     vehicle.vehicle.close()
-
