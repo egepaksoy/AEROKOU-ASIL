@@ -33,6 +33,9 @@ def frame_send_new(config):
         broadcast_started.set()
         while not stop_event.is_set():
             frame = picam2.capture_array()
+
+            cv2.imshow("Frame", frame)
+
             _, buf = cv2.imencode('.jpg', frame)
             data = buf.tobytes()
             total_chunks = ceil(len(data) / CHUNK_SIZE)
@@ -46,6 +49,9 @@ def frame_send_new(config):
                 sock.sendto(header + chunk, (UDP_IP, UDP_PORT))
 
             frame_id = (frame_id + 1) & 0xFFFFFFFF
+            
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
     except KeyboardInterrupt:
         print("Ctrl+C ile çıkıldı.")
@@ -158,19 +164,8 @@ def get_distance(repeat=5, LIDAR_ADDRESS = 0x62):
 
     return round(avg_distance_m, 3)  # Ölçümü metre cinsinden 3 ondalık basamakla döndür
 
-
-config = json.load(open("./dron_config.json", "r"))
-stop_event = threading.Event()
-servo_angles = ""
-
-gonderildi = False
-
-try:
-    broadcast_started = threading.Event()
-
-    threading.Thread(target=frame_send_new, args=(config, ), daemon=True).start()
-
-    while not broadcast_started.is_set():
+def arduino_controller(config):
+    while not broadcast_started.is_set() and not stop_event.is_set():
         continue
 
     if broadcast_started.is_set():
@@ -179,13 +174,15 @@ try:
         arduino = serial_handler.Serial_Control(port=config["ARDUINO"]["port"])
         print(f"Arduino {config['ARDUINO']['port']} portundan bağlandı")
 
-        timer = time.time()
-        arduino_val = ""
         while not stop_event.is_set():
             data = client.get_data()
-
             if data == None:
                 continue
+
+            if "|" in data:
+                data = data.strip()
+                data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
+                arduino.send_to_arduino(data)
 
             if "2|2" in data:
                 distance = get_distance()
@@ -202,19 +199,60 @@ try:
 
                     if "|" in arduino_val:
                         client.send_data(data=f"{distance}|{arduino_val.split('|')[0]}|{arduino_val.split('|')[1]}")
+            
+            time.sleep(0.01)
 
-            elif "|" in data:
-                data = data.strip()
-                data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
-                arduino.send_to_arduino(data)
 
-                arduino_val = arduino.read_value().strip()
+config = json.load(open("./dron_config.json", "r"))
+stop_event = threading.Event()
+servo_angles = ""
 
-                if "|" in arduino_val:
-                    client.send_data(data=f"{arduino_val.strip().split("|")[0]}|{arduino_val.strip().split("|")[1]}\n")
+gonderildi = False
+
+try:
+    broadcast_started = threading.Event()
+    threading.Thread(target=arduino_controller, args=(config,), daemon=True).start()
+
+    UDP_IP, UDP_PORT = config["UDP"]["ip"], config["UDP"]["port"]
+    CHUNK_SIZE = 1400                      # ~ MTU altı
+    HEADER_FMT = '<LHB'                   # frame_id:uint32, chunk_id:uint16, is_last:uint8
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    # PiCamera2'yi başlat ve yapılandır
+    picam2 = Picamera2()
+    picam2.configure(picam2.create_video_configuration(main={"format": "RGB888", "size": (640, 480)}))
+    picam2.start()
+    time.sleep(2)  # Kamera başlatma süresi için bekle
+
+    frame_id = 0
+
+    print(f"{UDP_IP} adresine gönderim başladı")
+    broadcast_started.set()
+    while not stop_event.is_set():
+        frame = picam2.capture_array()
+
+        cv2.imshow("Frame", frame)
+
+        _, buf = cv2.imencode('.jpg', frame)
+        data = buf.tobytes()
+        total_chunks = ceil(len(data) / CHUNK_SIZE)
+
+        for chunk_id in range(total_chunks):
+            start = chunk_id * CHUNK_SIZE
+            end = start + CHUNK_SIZE
+            chunk = data[start:end]
+            is_last = 1 if chunk_id == total_chunks - 1 else 0
+            header = struct.pack(HEADER_FMT, frame_id, chunk_id, is_last)
+            sock.sendto(header + chunk, (UDP_IP, UDP_PORT))
+
+        frame_id = (frame_id + 1) & 0xFFFFFFFF
+        
+        if cv2.waitKey(10) & 0xFF == ord('q'):
+            break
 
 except KeyboardInterrupt:
-    print("CTRL+C ile cikldi")
+    print("Ctrl+C ile çıkıldı.")
 
 except Exception as e:
     print("Hata: ", e)
@@ -223,3 +261,7 @@ except Exception as e:
 finally:
     if not stop_event.is_set():
         stop_event.set()
+    # Kamera ve soketi kapat
+    print("Program sonlandırıldı.")
+    picam2.stop()
+    sock.close()

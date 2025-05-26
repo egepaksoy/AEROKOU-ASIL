@@ -1,13 +1,10 @@
 #! GIBI
-import sys
 import cv2
 import socket
 import numpy as np
 import struct
 from ultralytics import YOLO
 import time
-import queue
-import threading
 
 class Handler:
     def __init__(self):
@@ -214,21 +211,21 @@ class Handler:
                                 cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1 - 10)), 
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-                if self.show_crosshair:
-                    height, width, _ = frame.shape
+                    if self.show_crosshair:
+                        height, width, _ = frame.shape
 
-                    # Ortadaki + işaretinin koordinatları
-                    center_x = width // 2
-                    center_y = height // 2
-                    cross_size = 20  # Artı işaretinin uzunluğu
+                        # Ortadaki + işaretinin koordinatları
+                        center_x = width // 2
+                        center_y = height // 2
+                        cross_size = 20  # Artı işaretinin uzunluğu
 
-                    # Yatay çizgi
-                    cv2.line(frame, (center_x - cross_size, center_y), (center_x + cross_size, center_y), self.crosshair_color, 2)
-                    # Dikey çizgi
-                    cv2.line(frame, (center_x, center_y - cross_size), (center_x, center_y + cross_size), self.crosshair_color, 2)
+                        # Yatay çizgi
+                        cv2.line(frame, (center_x - cross_size, center_y), (center_x + cross_size, center_y), self.crosshair_color, 2)
+                        # Dikey çizgi
+                        cv2.line(frame, (center_x, center_y - cross_size), (center_x, center_y + cross_size), self.crosshair_color, 2)
 
-                if self.showing_image:
-                    cv2.imshow("udp image", frame)
+                    if self.showing_image:
+                        cv2.imshow("udp image", frame)
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break

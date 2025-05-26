@@ -2,15 +2,18 @@ import threading
 import json
 import time
 import sys
+import math
+import cv2
+import socket
+import struct
+import keyboard
+import numpy as np
 sys.path.append('../../pymavlink_custom')
 
 from pymavlink_custom import Vehicle
 import tcp_handler
 import calc_loc
 import serial_handler
-import image_processing_handler
-import math
-import keyboard
 
 def failsafe(vehicle, home_pos=None, config: json=None):
     def failsafe_drone_id(vehicle, drone_id, home_pos=None):
@@ -59,8 +62,8 @@ def failsafe(vehicle, home_pos=None, config: json=None):
     print(f"{vehicle.drone_ids} id'li Drone(lar) Failsafe aldi")
 
 
-def keyboard_controller(vehicle, server: tcp_handler.TCPServer):
-    global rasp_data
+
+def keyboard_controller(server: tcp_handler.TCPServer):
     ters = -1
 
     while not stop_event.is_set():
@@ -86,19 +89,6 @@ def keyboard_controller(vehicle, server: tcp_handler.TCPServer):
 
         ser_data = f"{ser_x}|{ser_y}\n"
         server.send_data(ser_data)
-
-        rasp_data = server.get_data()
-
-        if rasp_data is not None and rasp_data != "":
-            if len(rasp_data.split("|")) == 2:
-                x_data = int(rasp_data.strip().split("|")[0])
-            elif len(rasp_data.split("|")) == 3:
-                x_data = int(rasp_data.strip().split("|")[1])
-            
-            if (x_data >= 120 or x_data <= -40):
-                print("Donuyor")
-                vehicle.turn_way(turn_angle=ser_x * 10, drone_id=DRONE_ID)
-
         time.sleep(0.05)
 
 def joystick_controller(server: tcp_handler.TCPServer, config):
@@ -114,24 +104,83 @@ def joystick_controller(server: tcp_handler.TCPServer, config):
                 joystick_data = f"{joystick_data.split('|')[0]}|{joystick_data.split('|')[1]}\n"
             server.send_data(joystick_data)
 
+        time.sleep(0.01)
+
+def distance(loc1, loc2):
+    return math.sqrt((loc1[0] - loc2[0]) ** 2 + (loc1[1] - loc2[1]) ** 2) * vehicle.DEG
+
+def udp_camera_new(ip, port):
+    BUFFER_SIZE = 65536
+    HEADER_FMT = '<LHB'
+    HEADER_SIZE = struct.calcsize(HEADER_FMT)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((ip, port))
+
+    buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
+    expected_counts = {}  # {frame_id: total_chunks, …}
+
+    while not stop_event.is_set():
+        packet, _ = sock.recvfrom(BUFFER_SIZE)
+        frame_id, chunk_id, is_last = struct.unpack(HEADER_FMT, packet[:HEADER_SIZE])
+        chunk_data = packet[HEADER_SIZE:]
+        
+        # Kaydet
+        if frame_id not in buffers:
+            buffers[frame_id] = {}
+        buffers[frame_id][chunk_id] = chunk_data
+        
+        # Toplam parça sayısını son pakette işaretle
+        if is_last:
+            expected_counts[frame_id] = chunk_id + 1
+
+        # Hepsi geldiyse işle
+        if frame_id in expected_counts and len(buffers[frame_id]) == expected_counts[frame_id]:
+            # Birleştir
+            data = b''.join(buffers[frame_id][i] for i in range(expected_counts[frame_id]))
+            frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            
+            if frame is not None:
+                frame = cv2.flip(frame, -1)
+
+                height, width, _ = frame.shape
+
+                # Ortadaki + işaretinin koordinatları
+                center_x = width // 2
+                center_y = height // 2
+                cross_size = 20  # Artı işaretinin uzunluğu
+
+                # Yatay çizgi
+                cv2.line(frame, (center_x - cross_size, center_y), (center_x + cross_size, center_y), (255,255,0), 2)
+                # Dikey çizgi
+                cv2.line(frame, (center_x, center_y - cross_size), (center_x, center_y + cross_size), (255,255,0), 2)
+
+                
+                cv2.imshow("udp image", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    
+    # Temizlik
+    del buffers[frame_id], expected_counts[frame_id]
+
+
+
+
 config = json.load(open("./config.json"))
 
 stop_event = threading.Event()
-rasp_data = ""
 
-camera = image_processing_handler.Handler()
-#!camera_thread = threading.Thread(target=camera.udp_camera, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
-camera_thread = threading.Thread(target=camera.udp_camera_new, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
+camera_thread = threading.Thread(target=udp_camera_new, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
 camera_thread.start()
 
 server = tcp_handler.TCPServer(port=config["TCP"]["port"])
 
+threading.Thread(target=keyboard_controller, args=(server, ), daemon=True).start()
+
 drone_config = config["DRONE"]
 
 vehicle = Vehicle(drone_config["port"])
-
-threading.Thread(target=keyboard_controller, args=(vehicle, server), daemon=True).start()
-#!threading.Thread(target=joystick_controller, args=(server, config), daemon=True).start()
 
 ALT = drone_config["alt"]
 DRONE_ID = int(drone_config["id"])
@@ -151,22 +200,25 @@ try:
     #? 1. aşama (tcp verisi bekleniyor)
     start_time = time.time()
     while True:
+        tcp_data = server.get_data()
         if time.time() - start_time > 5:
             print(f"{DRONE_ID}>> hedefler aranıyor...")
             start_time = time.time()
         
-        rasp_data = server.get_data()
-        if rasp_data != None:
-            if len(rasp_data.split("|")) == 3:
-                print("tcp data: ", rasp_data.split("|"))
-                if calc_loc.check_data(rasp_data) == False:
-                    print("Hedef bozuk alındı yeni hedef bekleniyor")
-                    continue
-                
-                current_loc = vehicle.get_pos(drone_id=DRONE_ID)
-                target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=vehicle.get_yaw(), tcp_data=rasp_data, DEG=vehicle.DEG)
-                print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
-                break
+        if tcp_data != None:
+            print(tcp_data.split("|"))
+            if calc_loc.check_data(tcp_data) == False:
+                print("Hedef bozuk alındı yeni hedef bekleniyor")
+                tcp_data = ""
+                continue
+            
+            current_loc = vehicle.get_pos(drone_id=DRONE_ID)
+            target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=vehicle.get_yaw(), tcp_data=tcp_data, DEG=vehicle.DEG)
+            print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
+            print(f"{DRONE_ID}>> hedefe mesafe: {distance(target_loc, current_loc)}")
+            break
+            
+        time.sleep(0.01)
 
     #? 2. aşama (tcp verisine gidiliyor)
     if target_loc != []:
@@ -177,6 +229,7 @@ try:
         while True:
             if time.time() - start_time > 5:
                 print(f"{DRONE_ID}>> hedefe gidiyor...")
+                print(f"Kalan mesafe: {distance(vehicle.get_pos(drone_id=DRONE_ID), target_loc)} m")
                 start_time = time.time()
             
             if vehicle.on_location(loc=target_loc, seq=0, sapma=1, drone_id=DRONE_ID):

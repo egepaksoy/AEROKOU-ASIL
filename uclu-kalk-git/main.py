@@ -30,19 +30,19 @@ def calc_loc(pos, yaw_angle, distance, DEG):
 def mission(vehicle, alt, distance, drone_id):
     DRONE_ID = drone_id # drone id
 
-    loc = calc_loc(pos=vehicle.get_pos(drone_id=drone_id), yaw_angle=vehicle.get_yaw(drone_id=drone_id), distance=distance, DEG=vehicle.DEG)
-
-    print(f"{DRONE_ID}>> Göreve Başladı")
-
-    vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
-    vehicle.arm_disarm(arm=True, drone_id=DRONE_ID)
-    vehicle.takeoff(alt=alt, drone_id=DRONE_ID)
-    
-    print(f"{DRONE_ID}>> takeoff yaptı")
-    vehicle.go_to(loc=loc, alt=alt, drone_id=DRONE_ID)
-    print(f"{DRONE_ID}>> {distance} metre ileri gidiyor...")
-
     try:
+        loc = calc_loc(pos=vehicle.get_pos(drone_id=drone_id), yaw_angle=vehicle.get_yaw(drone_id=drone_id), distance=distance, DEG=vehicle.DEG)
+
+        print(f"{DRONE_ID}>> Göreve Başladı")
+
+        vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
+        vehicle.arm_disarm(arm=True, drone_id=DRONE_ID)
+        vehicle.takeoff(alt=alt, drone_id=DRONE_ID)
+        
+        print(f"{DRONE_ID}>> takeoff yaptı")
+        vehicle.go_to(loc=loc, alt=alt, drone_id=DRONE_ID)
+        print(f"{DRONE_ID}>> {distance} metre ileri gidiyor...")
+
         start_time = time.time()
         while not stop_event.is_set():
             if time.time() - start_time > 5:
@@ -56,13 +56,15 @@ def mission(vehicle, alt, distance, drone_id):
         
         print(f"{DRONE_ID}>> Görevini tamamladı")
 
+    except stop_event.is_set():
+        pass
+
     finally:
         pass
 
 config = json.load(open("config.json", "r"))
 
 drone_ids = config["DRONE"]["ids"]
-alt = config["DRONE"]["alt"]
 distance = config["DRONE"]["distance"]
 
 stop_event = threading.Event()
@@ -71,15 +73,20 @@ vehicle = Vehicle(config["DRONE"]["path"])
 threads = []
 try:
     for drone_id in drone_ids:
-        thrd = threading.Thread(target=mission, args=(vehicle, alt, distance, drone_id), daemon=True)
+        thrd = threading.Thread(target=mission, args=(vehicle, config["DRONE"][f"{drone_id}"]["alt"], distance, drone_id), daemon=True)
         thrd.start()
         threads.append(thrd)
-
-    for t in threads:
-        t.join()        
     
-    print("Görev tamamlandı")
-
+    running = True
+    while running:
+        for t in threads:
+            if not t.is_alive():
+                running = False
+            else:
+                running = True
+            
+    print("GOREV TAMAMLANDI")
+    
 except KeyboardInterrupt:
     if not stop_event.is_set():
         stop_event.set()

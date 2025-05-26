@@ -6,7 +6,8 @@ def calc_location(current_loc, yaw_angle, tcp_data, DEG):
     # and the angles of the servos
     #! tcp_data_format: distance|servo_x|servo_y
 
-    abs_distance, servo_x_angle, servo_y_angle = tcp_data.split("|")
+    print("TCP Data Fonk: ", tcp_data)
+    abs_distance, servo_x_angle, servo_y_angle = tcp_data.strip().split("|")
     abs_distance = float(abs_distance)
     servo_x_angle = float(servo_x_angle)
     servo_y_angle = abs(float(servo_y_angle))

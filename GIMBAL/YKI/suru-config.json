@@ -1,5 +1,5 @@
 {
-    "CONN-PORT": "com6",
+    "CONN-PORT": "udp:172.22.160.1:14550",
     "GOZLEMCI":
     {
         "id": 2,
