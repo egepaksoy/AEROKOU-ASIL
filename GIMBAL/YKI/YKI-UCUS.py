@@ -3,11 +3,6 @@ import json
 import time
 import sys
 import math
-import cv2
-import socket
-import struct
-import keyboard
-import numpy as np
 sys.path.append('../../pymavlink_custom')
 
 from pymavlink_custom import Vehicle
