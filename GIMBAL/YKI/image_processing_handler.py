@@ -7,10 +7,10 @@ from ultralytics import YOLO
 import time
 
 class Handler:
-    def __init__(self):
+    def __init__(self, stop_event):
         self.model = None
         self.proccessing = False
-        self.is_running = True
+        self.stop_event = stop_event
         self.showing_image = True
         self.show_crosshair = True
         self.crosshair_color = (255, 255, 0)
@@ -22,7 +22,7 @@ class Handler:
             print(f"Dahili kamera {camera_path} açılamadı")
         
         start_time = time.time()
-        while self.is_running:
+        while not self.stop_event.is_set():
             ret, frame = cap.read()
 
             if time.time() - start_time > 0.1 and self.proccessing:
@@ -81,7 +81,7 @@ class Handler:
         buffer = b''  # Gelen veri parçalarını depolamak için tampon
         current_frame = -1  # Geçerli çerçeve numarasını takip etmek için sayaç
         start_time = time.time()
-        while self.is_running:
+        while not self.stop_event.is_set():
             data, addr = sock.recvfrom(BUFFER_SIZE)  # Maksimum UDP paket boyutu kadar veri al
             
             # Çerçeve numarasını çöz
@@ -164,7 +164,7 @@ class Handler:
         buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
         expected_counts = {}  # {frame_id: total_chunks, …}
 
-        while self.is_running:
+        while not self.stop_event.is_set():
             packet, _ = sock.recvfrom(BUFFER_SIZE)
             frame_id, chunk_id, is_last = struct.unpack(HEADER_FMT, packet[:HEADER_SIZE])
             chunk_data = packet[HEADER_SIZE:]
@@ -231,7 +231,10 @@ class Handler:
                     break
         
         # Temizlik
-        del buffers[frame_id], expected_counts[frame_id]
+        if frame_id in buffers:
+            del buffers[frame_id]
+        if frame_id in expected_counts:
+            del expected_counts[frame_id]
 
 
     

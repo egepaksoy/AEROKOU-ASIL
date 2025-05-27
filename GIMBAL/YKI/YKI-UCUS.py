@@ -13,7 +13,8 @@ sys.path.append('../../pymavlink_custom')
 from pymavlink_custom import Vehicle
 import tcp_handler
 import calc_loc
-import serial_handler
+import image_processing_handler
+import gimbal_controller
 
 def failsafe(vehicle, home_pos=None, config: json=None):
     def failsafe_drone_id(vehicle, drone_id, home_pos=None):
@@ -62,134 +63,46 @@ def failsafe(vehicle, home_pos=None, config: json=None):
     print(f"{vehicle.drone_ids} id'li Drone(lar) Failsafe aldi")
 
 
-
-def keyboard_controller(server: tcp_handler.TCPServer):
-    ters = -1
-
-    while not stop_event.is_set():
-        ser_data = ""
-        ser_x = 0
-        ser_y = 0
-
-        if keyboard.is_pressed("x"):
-            ser_x = 2
-            ser_y = 2
-        else:
-            if keyboard.is_pressed('right') or keyboard.is_pressed('d'):
-                ser_x = -1 * ters
-
-            if keyboard.is_pressed('left') or keyboard.is_pressed('a'):
-                ser_x = 1 * ters
-
-            if keyboard.is_pressed('up') or keyboard.is_pressed('w'):
-                ser_y = 1 * ters
-
-            if keyboard.is_pressed('down') or keyboard.is_pressed('s'):
-                ser_y = -1 * ters
-
-        ser_data = f"{ser_x}|{ser_y}\n"
-        server.send_data(ser_data)
-        time.sleep(0.05)
-
-def joystick_controller(server: tcp_handler.TCPServer, config):
-    arduino = serial_handler.Serial_Control(port=config["ARDUINO"]["port"])
-
-    while not stop_event.is_set():
-        joystick_data = arduino.read_value()
-        if len(joystick_data.split("|")) == 3:
-            server.send_data("iste")
-        elif joystick_data != None:
-            if "|" in joystick_data and "\n" not in joystick_data:
-                joystick_data = joystick_data.strip()
-                joystick_data = f"{joystick_data.split('|')[0]}|{joystick_data.split('|')[1]}\n"
-            server.send_data(joystick_data)
-
-        time.sleep(0.01)
-
 def distance(loc1, loc2):
-    return math.sqrt((loc1[0] - loc2[0]) ** 2 + (loc1[1] - loc2[1]) ** 2) * vehicle.DEG
-
-def udp_camera_new(ip, port):
-    BUFFER_SIZE = 65536
-    HEADER_FMT = '<LHB'
-    HEADER_SIZE = struct.calcsize(HEADER_FMT)
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((ip, port))
-
-    buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
-    expected_counts = {}  # {frame_id: total_chunks, …}
-
-    while not stop_event.is_set():
-        packet, _ = sock.recvfrom(BUFFER_SIZE)
-        frame_id, chunk_id, is_last = struct.unpack(HEADER_FMT, packet[:HEADER_SIZE])
-        chunk_data = packet[HEADER_SIZE:]
-        
-        # Kaydet
-        if frame_id not in buffers:
-            buffers[frame_id] = {}
-        buffers[frame_id][chunk_id] = chunk_data
-        
-        # Toplam parça sayısını son pakette işaretle
-        if is_last:
-            expected_counts[frame_id] = chunk_id + 1
-
-        # Hepsi geldiyse işle
-        if frame_id in expected_counts and len(buffers[frame_id]) == expected_counts[frame_id]:
-            # Birleştir
-            data = b''.join(buffers[frame_id][i] for i in range(expected_counts[frame_id]))
-            frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-            
-            if frame is not None:
-                frame = cv2.flip(frame, -1)
-
-                height, width, _ = frame.shape
-
-                # Ortadaki + işaretinin koordinatları
-                center_x = width // 2
-                center_y = height // 2
-                cross_size = 20  # Artı işaretinin uzunluğu
-
-                # Yatay çizgi
-                cv2.line(frame, (center_x - cross_size, center_y), (center_x + cross_size, center_y), (255,255,0), 2)
-                # Dikey çizgi
-                cv2.line(frame, (center_x, center_y - cross_size), (center_x, center_y + cross_size), (255,255,0), 2)
-
-                
-                cv2.imshow("udp image", frame)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+    # Dünya yarıçapı (metre cinsinden)
+    R = 6371000  
     
-    # Temizlik
-    if frame_id in buffers:
-        del buffers[frame_id]
-    if frame_id in expected_counts:
-        del expected_counts[frame_id]
+    # Dereceden radiana dönüşüm
+    phi1 = math.radians(loc1[0])
+    phi2 = math.radians(loc2[0])
+
+    d_phi = math.radians(loc2[0] - loc1[0])
+    d_lambda = math.radians(loc2[1] - loc1[1])
+
+    # Haversine formülü
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    distance = R * c  # mesafe (metre)
+    return distance
 
 
-
-
-
+#? Gerekliler
 config = json.load(open("./config.json"))
-
 stop_event = threading.Event()
 
-camera_thread = threading.Thread(target=udp_camera_new, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True)
-camera_thread.start()
+#? Kütüphaneler
+server = tcp_handler.TCPServer(port=config["TCP"]["port"], stop_event=stop_event)
+camera_handler = image_processing_handler.Handler(stop_event=stop_event)
+gimbal_handler = gimbal_controller.GimbalHandler(server=server, stop_event=stop_event)
 
-server = tcp_handler.TCPServer(port=config["TCP"]["port"])
+#? Threadler
+threading.Thread(target=camera_handler.udp_camera_new, args=((config["UDP"]["ip"]), config["UDP"]["port"]), daemon=True).start()
+threading.Thread(target=gimbal_handler.keyboard_controller, daemon=True).start()
 
-threading.Thread(target=keyboard_controller, args=(server, ), daemon=True).start()
-
+#? Uçuş hazırlıkları
 drone_config = config["DRONE"]
-
-vehicle = Vehicle(drone_config["port"])
-
 ALT = drone_config["alt"]
 DRONE_ID = int(drone_config["id"])
 target_loc = []
 home_pos = []
+
+vehicle = Vehicle(drone_config["port"])
 
 try:
     vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
@@ -203,7 +116,7 @@ try:
 
     #? 1. aşama (tcp verisi bekleniyor)
     start_time = time.time()
-    while True:
+    while not stop_event.is_set():
         tcp_data = server.get_data()
         if time.time() - start_time > 5:
             print(f"{DRONE_ID}>> hedefler aranıyor...")
@@ -211,8 +124,10 @@ try:
         
         if tcp_data != None:
             tcp_data = tcp_data.strip()
+            #! Mesafe verisi gelmedi ise devam ediyor
             if len(tcp_data.split("|")) != 3:
                 continue
+
             print(tcp_data.split("|"))
             if calc_loc.check_data(tcp_data) == False:
                 print("Hedef bozuk alındı yeni hedef bekleniyor")
@@ -220,9 +135,12 @@ try:
                 continue
             
             current_loc = vehicle.get_pos(drone_id=DRONE_ID)
-            target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=vehicle.get_yaw(), tcp_data=tcp_data, DEG=vehicle.DEG)
+            current_yaw = vehicle.get_yaw(drone_id=DRONE_ID)
+
+            target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=current_yaw, tcp_data=tcp_data, DEG=vehicle.DEG)
+
             print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
-            print(f"{DRONE_ID}>> hedefe mesafe: {distance(target_loc, current_loc)}")
+            print(f"Hedefe olan mesafe: {distance(current_loc, target_loc)}m")
             break
             
         time.sleep(0.01)
@@ -233,10 +151,10 @@ try:
         print(f"{DRONE_ID}>> hedefe gidiyor")
 
         start_time = time.time()
-        while True:
+        while not stop_event.is_set():
             if time.time() - start_time > 5:
                 print(f"{DRONE_ID}>> hedefe gidiyor...")
-                print(f"Kalan mesafe: {distance(vehicle.get_pos(drone_id=DRONE_ID), target_loc)} m")
+                print(f"Kalan mesafe: {distance(vehicle.get_pos(drone_id=DRONE_ID), target_loc)}m")
                 start_time = time.time()
             
             if vehicle.on_location(loc=target_loc, seq=0, sapma=1, drone_id=DRONE_ID):
@@ -250,7 +168,7 @@ try:
         print(f"{DRONE_ID}>> kalkış konumuna dönüyor...")
 
         start_time = time.time()
-        while True:
+        while not stop_event.is_set():
             if time.time() - start_time > 5:
                 print(f"{DRONE_ID}>> kalkış konumuna dönüyor...")
                 start_time = time.time()

@@ -4,20 +4,20 @@ import threading
 from threading import Thread
 
 class TCPClient():
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, stop_event):
         self.ip = ip
         self.port = port        
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         self.connected = False
-        self.running = True
+        self.stop_event = stop_event
 
         self.data_queue = queue.Queue()
 
         self.connect()
 
     def connect(self):
-        while True:
+        while not self.stop_event.is_set():
             try:
                 self.socket.connect((self.ip, self.port))
                 self.connected = True
@@ -29,7 +29,6 @@ class TCPClient():
                 break
                 
             except Exception as e:
-                self.running = False
                 print(f"Client>> Connection failed: {e}")
                 continue
 
@@ -44,7 +43,7 @@ class TCPClient():
             print(f"Send failed: {e}")
 
     def receive_data(self, buffer_size=1024):
-        while self.running:
+        while not self.stop_event.is_set():
             try:
                 data = self.socket.recv(buffer_size).decode()
                 if not data:
@@ -62,11 +61,10 @@ class TCPClient():
             return None
 
     def close(self):
-        self.running = False
         self.socket.close()
 
 class TCPServer:
-    def __init__(self, port):
+    def __init__(self, port, stop_event):
         self.port = port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind(("0.0.0.0", self.port))
@@ -74,7 +72,7 @@ class TCPServer:
         self.server_socket.listen(5)  # Maksimum 5 client
         
         self.data_queue = queue.Queue()  # Gelen verileri saklamak için Queue
-        self.running = True  # Sunucunun çalışıp çalışmadığını kontrol eden flag
+        self.stop_event = stop_event
         self.connected_addrs = []
         self.connected_clients = []
 
@@ -86,7 +84,7 @@ class TCPServer:
         Thread(target=self.accept_clients, daemon=True).start()
 
     def accept_clients(self):
-        while self.running:
+        while not self.stop_event.is_set():
             client_socket, addr = self.server_socket.accept()
             print(f"{addr} adresinden yeni baglanti")
             self.connected_addrs.append(addr)
@@ -94,7 +92,7 @@ class TCPServer:
             Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
 
     def handle_client(self, client_socket):
-        while self.running:
+        while not self.stop_event.is_set():
             try:
                 data = client_socket.recv(1024).decode()
                 if not data:
@@ -128,5 +126,4 @@ class TCPServer:
             return None
 
     def stop(self):
-        self.running = False
         self.server_socket.close()

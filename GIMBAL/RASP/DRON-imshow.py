@@ -179,11 +179,6 @@ def arduino_controller(config):
             if data == None:
                 continue
 
-            if "|" in data:
-                data = data.strip()
-                data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
-                arduino.send_to_arduino(data)
-
             if "2|2" in data:
                 distance = get_distance()
 
@@ -199,6 +194,11 @@ def arduino_controller(config):
 
                     if "|" in arduino_val:
                         client.send_data(data=f"{distance}|{arduino_val.split('|')[0]}|{arduino_val.split('|')[1]}")
+
+            elif "|" in data:
+                data = data.strip()
+                data = f"{data.split('|')[0]}|{data.split('|')[1]}\n"
+                arduino.send_to_arduino(data)
             
             time.sleep(0.01)
 
@@ -232,7 +232,7 @@ try:
     while not stop_event.is_set():
         frame = picam2.capture_array()
 
-        cv2.imshow("Frame", frame)
+        #cv2.imshow("Frame", frame)
 
         _, buf = cv2.imencode('.jpg', frame)
         data = buf.tobytes()
