@@ -127,6 +127,9 @@ try:
             #! Mesafe verisi gelmedi ise devam ediyor
             if len(tcp_data.split("|")) != 3:
                 continue
+        
+            if float(tcp_data.split("|")[0]) <= 0:
+                continue
 
             print(tcp_data.split("|"))
             if calc_loc.check_data(tcp_data) == False:

@@ -138,13 +138,7 @@ try:
 
                     if "|" in arduino_val:
                         arduino_val_split = arduino_val.split("|")
-                        send = True
-                        for i in arduino_val_split:
-                            if not i.isdigit():
-                                send = False
-                        
-                        if send:
-                            client.send_data(data=f"{distance}|{arduino_val.split('|')[0].strip()}|{arduino_val.split('|')[1].strip()}")
+                        client.send_data(data=f"{distance}|{arduino_val.split('|')[0].strip()}|{arduino_val.split('|')[1].strip()}")
 
             elif "|" in data:
                 data = data.strip()
@@ -161,7 +155,7 @@ try:
                             send = False
                     
                     if send:
-                        client.send_data(data=f"{arduino_val.split('|')[0].strip()}|{arduino_val.split('|')[1].strip()}\n")
+                        client.send_data(data=f"{arduino_val.split('|')[0].strip()}|{arduino_val.split('|')[1].strip()}")
             
             time.sleep(0.01)
 
@@ -175,3 +169,4 @@ except Exception as e:
 finally:
     if not stop_event.is_set():
         stop_event.set()
+    arduino.ser.close()

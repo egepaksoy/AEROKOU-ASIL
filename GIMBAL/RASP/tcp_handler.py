@@ -52,6 +52,7 @@ class TCPClient():
 
             except Exception as e:
                 print(f"Client>> Receive failed: {e}")
+                self.stop_event.set()
                 break
 
     def get_data(self):
