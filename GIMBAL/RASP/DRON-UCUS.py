@@ -154,8 +154,8 @@ try:
                         if not i.isdigit():
                             send = False
                     
-                    if send:
-                        client.send_data(data=f"{arduino_val.split('|')[0].strip()}|{arduino_val.split('|')[1].strip()}")
+                    #if send:
+                        #client.send_data(data=f"{arduino_val.split('|')[0].strip()}|{arduino_val.split('|')[1].strip()}")
             
             time.sleep(0.01)
 

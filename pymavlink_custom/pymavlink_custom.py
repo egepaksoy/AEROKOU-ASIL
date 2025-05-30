@@ -659,8 +659,30 @@ class Vehicle():
         except Exception as e:
             return e
 
-    # sağa sola ileri geri hareket ettirme
-    def move_drone(self, rota, drone_id: int=None):
+    # lat lon hareket ettirme
+    def move_drone_body(self, rota, drone_id: int=None):
+        if drone_id is None:
+            drone_id = self.drone_id
+        
+        try:
+            vx, vy, vz = rota
+
+            self.vehicle.mav.set_position_target_local_ned_send(
+                0,  # Timestamp
+                drone_id, self.vehicle.target_component,
+                mavutil.mavlink.MAV_FRAME_BODY_NED,  # Koordinat sistemi
+                0b0000111111000111,  # Type mask (sadece hız kullanılacak)
+                0, 0, 0,  # Pozisyon (kullanılmıyor)
+                vx, vy, vz,  # Hız (m/s)
+                0, 0, 0,  # İvme (kullanılmıyor)
+                0, 0)  # Yaw, yaw_rate (kullanılmıyor)
+
+        except Exception as e:
+            print(e)
+            return e
+
+    # lat lon hareket ettirme
+    def move_drone_loc(self, rota, drone_id: int=None):
         if drone_id is None:
             drone_id = self.drone_id
         
