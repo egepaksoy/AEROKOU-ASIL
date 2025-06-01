@@ -6,6 +6,9 @@ import math
 from ultralytics import YOLO
 import sys
 import json
+import socket
+import struct
+import numpy as np
 sys.path.append('../pymavlink_custom')
 
 from pymavlink_custom import Vehicle
@@ -143,12 +146,13 @@ def get_distance(xy_center, screen, middle_range):
 
     return math.sqrt(dist_x**2 + dist_y**2)
 
-def local_camera(camera_path, model, stop_event, algilandi, yaw, distance, middle_range=0.2):
+def local_camera(camera_path, model, stop_event, algilandi, yaw, distance, camera_connected, middle_range=0.2):
     cap = cv2.VideoCapture(camera_path)
 
     if not cap.isOpened():
         print(f"Dahili kamera {camera_path} açılamadı")
     
+    camera_connected.set()
     while not stop_event.is_set():
         visualised = False
         _, frame = cap.read()
@@ -183,11 +187,82 @@ def local_camera(camera_path, model, stop_event, algilandi, yaw, distance, middl
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+def udp_camera(ip, port, model, stop_event, algilandi, yaw, distance, camera_connected, middle_range=0.2):
+    BUFFER_SIZE = 65536
+    HEADER_FMT = '<LHB'
+    HEADER_SIZE = struct.calcsize(HEADER_FMT)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((ip, port))
+
+    buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
+    expected_counts = {}  # {frame_id: total_chunks, …}
+
+    camera_connected.set()
+    while not stop_event.is_set():
+        visualised = False
+        packet, _ = sock.recvfrom(BUFFER_SIZE)
+        frame_id, chunk_id, is_last = struct.unpack(HEADER_FMT, packet[:HEADER_SIZE])
+        chunk_data = packet[HEADER_SIZE:]
+        
+        # Kaydet
+        if frame_id not in buffers:
+            buffers[frame_id] = {}
+        buffers[frame_id][chunk_id] = chunk_data
+        
+        # Toplam parça sayısını son pakette işaretle
+        if is_last:
+            expected_counts[frame_id] = chunk_id + 1
+
+        # Hepsi geldiyse işle
+        if frame_id in expected_counts and len(buffers[frame_id]) == expected_counts[frame_id]:
+            # Birleştir
+            data = b''.join(buffers[frame_id][i] for i in range(expected_counts[frame_id]))
+            frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            
+            if frame is not None:
+                screen_res = frame.shape[:2]
+                screen_res = (int(screen_res[1]), int(screen_res[0]))
+
+                screen_center = screen_res[0] / 2, screen_res[1] / 2
+
+                results = model(frame, verbose=False)
+                for r in results:
+                    boxes = r.boxes
+                    for box in boxes:
+                        if box.conf[0] < 0.90:
+                            continue
+                        
+                        visualised = True
+                        _, _, xyxy = visualise(screen_res, frame, middle_range, box, model)
+                        if not algilandi.is_set():
+                            algilandi.set()
+                        
+                        center_xy = (xyxy[2] + xyxy[0]) / 2, (xyxy[3] + xyxy[1]) / 2
+                        yaw.put_nowait(get_yaw(center_xy, screen_center))
+                        distance.put_nowait(get_distance(center_xy, screen_res, middle_range))
+
+            
+                if not visualised:
+                    visualise(screen_res, frame, middle_range)
+
+                cv2.imshow("udp image", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    
+    # Temizlik
+    if frame_id in buffers:
+        del buffers[frame_id]
+    if frame_id in expected_counts:
+        del expected_counts[frame_id]
+
 
 config = json.load(open("./config.json", "r"))
 
 algilandi = threading.Event()
 stop_event = threading.Event()
+camera_connected = threading.Event()
 
 yaw = queue.Queue()
 distance = queue.Queue()
@@ -196,8 +271,11 @@ distance = queue.Queue()
 model_name = config["UDP"]["model-path"]
 model = YOLO(model_name)
 
-threading.Thread(target=local_camera, args=(0, model, stop_event, algilandi, yaw, distance), daemon=True).start()
+threading.Thread(target=local_camera, args=(0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+#threading.Thread(target=udp_camera, args=(config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
 
+while not stop_event.is_set() and not camera_connected.is_set():
+    time.sleep(0.05)
 
 #########GOREV##########
 DRONE_ID = config["DRONE"]["id"]
@@ -239,15 +317,21 @@ try:
     
     if algilandi.is_set():
         # DUR
+        while not stop_event.is_set() and vehicle.get_speed(drone_id=DRONE_ID) > 0.1:
+            time.sleep(0.05)
+
+        time.sleep(3)
+        print("Objenin konumuna gidiyor...")
         vehicle.go_to(loc=obj_loc, drone_id=DRONE_ID)
         while not stop_event.is_set() and not vehicle.on_location(loc=obj_loc, seq=0, sapma=0.7, drone_id=DRONE_ID):
-            time.sleep(0.01)
+            time.sleep(0.05)
         
-        time.sleep(1)
+        time.sleep(4)
         
         # DON
+        print("Yaw açısı çekiliyor...")
         while yaw.empty():
-            time.sleep(0.01)
+            time.sleep(0.05)
         yaw = yaw.get()
         print(f"yaw: {yaw}")
         vehicle.turn_way(turn_angle=yaw, drone_id=DRONE_ID)
@@ -257,6 +341,7 @@ try:
         
         time.sleep(1)
         # GIT
+        print("İleri gidiyor...")
         while distance.empty():
             time.sleep(0.01)
         distance_flt = distance.get()
