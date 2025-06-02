@@ -1,9 +1,8 @@
 import math
+from geopy.distance import geodesic
+from geopy.point import Point
 
 def calc_location(current_loc, yaw_angle, tcp_data, DEG):
-    # Calculate the new location of the gimbal
-    # based on the distance from the current location
-    # and the angles of the servos
     #! tcp_data_format: distance|servo_x|servo_y
 
     print("TCP Data Fonk: ", tcp_data)
@@ -23,6 +22,28 @@ def calc_location(current_loc, yaw_angle, tcp_data, DEG):
     current_y_loc += (DEG * distance * math.sin(math.radians((abs_angle + 360) % 360)))
 
     return current_x_loc, current_y_loc
+
+def calc_location_geopy(current_loc, yaw_angle, tcp_data, DEG):
+    #! tcp_data_format: distance|servo_x|servo_y
+
+    print("TCP Data Fonk: ", tcp_data)
+    abs_distance, servo_x_angle, servo_y_angle = tcp_data.strip().split("|")
+    abs_distance = float(abs_distance)
+    servo_x_angle = float(servo_x_angle)
+    servo_y_angle = abs(float(servo_y_angle))
+
+    distance = abs_distance * math.cos(math.radians(servo_y_angle))
+
+    abs_angle = (yaw_angle + servo_x_angle + 360) % 360
+
+    start_loc = Point(current_loc[0], current_loc[1])
+
+    hedef = geodesic(meters=distance).destination(start_loc, bearing=abs_angle)
+
+    return hedef.latitude, hedef.longitude
+
+def get_dist(loc1, loc2):
+    return geodesic((loc1[0], loc1[1]), (loc2[0], loc2[1])).meters
 
 def check_data(tcp_data: str):
     if "|" not in tcp_data:
