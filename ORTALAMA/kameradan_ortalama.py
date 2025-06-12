@@ -9,6 +9,8 @@ import json
 import socket
 import struct
 import numpy as np
+from geopy.distance import geodesic
+from geopy.point import Point
 sys.path.append('../pymavlink_custom')
 
 from pymavlink_custom import Vehicle
@@ -146,7 +148,54 @@ def get_distance(xy_center, screen, middle_range):
 
     return math.sqrt(dist_x**2 + dist_y**2)
 
-def local_camera(camera_path, model, stop_event, algilandi, yaw, distance, camera_connected, middle_range=0.2):
+def calculate_ground_distance(
+    drone_height,
+    xy_center,
+    xy_screen,
+    xy_fov
+):
+    fov_x_deg, fov_y_deg = xy_fov
+    image_width, image_height = xy_screen
+    pixel_x, pixel_y = xy_center
+
+    # Piksel başına düşen açı (derece cinsinden)
+    angle_per_pixel_x = fov_x_deg / image_width
+    angle_per_pixel_y = fov_y_deg / image_height
+
+    # Görüntünün merkezine göre fark
+    dx = pixel_x - (image_width / 2)
+    dy = pixel_y - (image_height / 2)
+
+    # Merkezden sapma açıları (derece)
+    angle_x_deg = dx * angle_per_pixel_x
+    angle_y_deg = dy * angle_per_pixel_y
+
+    # Açıları radyana çevir
+    angle_x_rad = math.radians(angle_x_deg)
+    angle_y_rad = math.radians(angle_y_deg)
+
+    # Yere olan yatay uzaklıkları hesapla (tan(θ) = karşı/komşu => karşı = tan(θ) * komşu)
+    ground_x = math.tan(angle_x_rad) * drone_height
+    ground_y = math.tan(angle_y_rad) * drone_height
+
+    # Öklidyen uzaklık (drone altından olan yatay mesafe)
+    ground_distance = math.sqrt(ground_x**2 + ground_y**2)
+
+    return ground_distance
+
+
+def get_position(camera_distance, camera_yaw, current_loc):
+    start_loc = Point(current_loc[0], current_loc[1])
+    hedef = geodesic(meters=camera_distance).destination(start_loc, bearing=camera_yaw)
+
+    return hedef.latitude, hedef.longitude
+
+def get_location_distance(loc1, loc2):
+    return geodesic(loc1, loc2).meters
+
+    
+def local_camera(vehicle, camera_path, model, stop_event, algilandi, yaw, distance, camera_connected, middle_range=0.2, xy_fov=(62.2, 48.8)):
+    detected = False
     cap = cv2.VideoCapture(camera_path)
 
     if not cap.isOpened():
@@ -175,7 +224,14 @@ def local_camera(camera_path, model, stop_event, algilandi, yaw, distance, camer
                 
                 center_xy = (xyxy[2] + xyxy[0]) / 2, (xyxy[3] + xyxy[1]) / 2
                 yaw.put_nowait(get_yaw(center_xy, screen_center))
-                distance.put_nowait(get_distance(center_xy, screen_res, middle_range))
+                if detected == False:
+                    uzaklik = calculate_ground_distance(drone_height=vehicle.get_pos()[2], xy_center=center_xy, xy_screen=screen_res, xy_fov=xy_fov)
+                    print("Kameradan uzaklik: ", uzaklik)
+                    distance.put_nowait(uzaklik)
+                else:
+                    distance.put_nowait(get_distance(center_xy, screen_res, middle_range))
+
+                detected = True
 
     
         if not visualised:
@@ -187,7 +243,9 @@ def local_camera(camera_path, model, stop_event, algilandi, yaw, distance, camer
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-def udp_camera(ip, port, model, stop_event, algilandi, yaw, distance, camera_connected, middle_range=0.2):
+def udp_camera(vehicle, ip, port, model, stop_event, algilandi, yaw, distance, camera_connected, middle_range=0.2, xy_fov=(62.2, 48.8)):
+    detected = False
+
     BUFFER_SIZE = 65536
     HEADER_FMT = '<LHB'
     HEADER_SIZE = struct.calcsize(HEADER_FMT)
@@ -240,7 +298,12 @@ def udp_camera(ip, port, model, stop_event, algilandi, yaw, distance, camera_con
                         
                         center_xy = (xyxy[2] + xyxy[0]) / 2, (xyxy[3] + xyxy[1]) / 2
                         yaw.put_nowait(get_yaw(center_xy, screen_center))
-                        distance.put_nowait(get_distance(center_xy, screen_res, middle_range))
+                        if detected == False:
+                            distance.put_nowait(calculate_ground_distance(drone_height=vehicle.get_pos()[2], xy_center=center_xy, xy_screen=screen_res, xy_fov=xy_fov))
+                        else:
+                            distance.put_nowait(get_distance(center_xy, screen_res, middle_range))
+
+                        detected = True
 
             
                 if not visualised:
@@ -271,12 +334,6 @@ distance = queue.Queue()
 model_name = config["UDP"]["model-path"]
 model = YOLO(model_name)
 
-#threading.Thread(target=local_camera, args=(0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
-threading.Thread(target=udp_camera, args=(config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
-
-while not stop_event.is_set() and not camera_connected.is_set():
-    time.sleep(0.05)
-
 #########GOREV##########
 DRONE_ID = config["DRONE"]["id"]
 ALT = config["DRONE"]["alt"]
@@ -285,6 +342,13 @@ locs = config["DRONE"]["direk-locs"]
 current_loc = locs[0]
 
 vehicle = Vehicle(config["DRONE"]["path"])
+
+threading.Thread(target=local_camera, args=(vehicle, 0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+#threading.Thread(target=udp_camera, args=(vehicle, config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+
+while not stop_event.is_set() and not camera_connected.is_set():
+    time.sleep(0.05)
+
 try:
     vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
     vehicle.arm_disarm(arm=True, drone_id=DRONE_ID)
@@ -310,7 +374,9 @@ try:
         
         if algilandi.is_set():
             print(f"{DRONE_ID}>> Objeyi algıladı")
-            obj_loc = vehicle.get_pos(drone_id=DRONE_ID)
+            drone_loc = vehicle.get_pos(drone_id=DRONE_ID)
+            obj_pos = get_position(camera_distance=distance.get(), camera_yaw=yaw.get(), current_loc=drone_loc)
+            print("Drondan uzaklik: ", get_location_distance(drone_loc[:2], obj_pos))
             break
         
         time.sleep(0.01)
@@ -322,8 +388,8 @@ try:
 
         time.sleep(3)
         print("Objenin konumuna gidiyor...")
-        vehicle.go_to(loc=obj_loc, drone_id=DRONE_ID)
-        while not stop_event.is_set() and not vehicle.on_location(loc=obj_loc, seq=0, sapma=0.7, drone_id=DRONE_ID):
+        vehicle.go_to(loc=obj_pos, drone_id=DRONE_ID)
+        while not stop_event.is_set() and not vehicle.on_location(loc=obj_pos, seq=0, sapma=0.7, drone_id=DRONE_ID):
             time.sleep(0.05)
         
         time.sleep(4)
