@@ -299,7 +299,9 @@ def udp_camera(vehicle, ip, port, model, stop_event, algilandi, yaw, distance, c
                         center_xy = (xyxy[2] + xyxy[0]) / 2, (xyxy[3] + xyxy[1]) / 2
                         yaw.put_nowait(get_yaw(center_xy, screen_center))
                         if detected == False:
-                            distance.put_nowait(calculate_ground_distance(drone_height=vehicle.get_pos()[2], xy_center=center_xy, xy_screen=screen_res, xy_fov=xy_fov))
+                            uzaklik = calculate_ground_distance(drone_height=vehicle.get_pos()[2], xy_center=center_xy, xy_screen=screen_res, xy_fov=xy_fov)
+                            print("Kameradan uzaklik: ", uzaklik)
+                            distance.put_nowait(uzaklik)
                         else:
                             distance.put_nowait(get_distance(center_xy, screen_res, middle_range))
 
@@ -343,8 +345,8 @@ current_loc = locs[0]
 
 vehicle = Vehicle(config["DRONE"]["path"])
 
-threading.Thread(target=local_camera, args=(vehicle, 0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
-#threading.Thread(target=udp_camera, args=(vehicle, config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+#threading.Thread(target=local_camera, args=(vehicle, 0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+threading.Thread(target=udp_camera, args=(vehicle, config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
 
 while not stop_event.is_set() and not camera_connected.is_set():
     time.sleep(0.05)

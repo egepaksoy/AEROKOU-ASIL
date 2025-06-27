@@ -164,9 +164,9 @@ def calculate_ground_distance(
     return ground_distance
 
 
-def get_position(camera_distance, total_yaw, current_loc):
+def get_position(camera_distance, camera_yaw, current_loc):
     start_loc = Point(current_loc[0], current_loc[1])
-    hedef = geodesic(meters=camera_distance).destination(start_loc, bearing=total_yaw)
+    hedef = geodesic(meters=camera_distance).destination(start_loc, bearing=camera_yaw)
 
     return hedef.latitude, hedef.longitude
 
@@ -328,14 +328,7 @@ while not stop_event.is_set() and not camera_connected.is_set():
     time.sleep(0.05)
 
 try:
-    vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
-    vehicle.arm_disarm(arm=True, drone_id=DRONE_ID)
-    vehicle.takeoff(alt=ALT, drone_id=DRONE_ID)
-    home_pos = vehicle.get_pos(drone_id=DRONE_ID)
-    print(f"{DRONE_ID}>> {ALT} metreye takeoff yaptı")
     print(f"{DRONE_ID}>> Göreve Başlıyor")
-
-    vehicle.go_to(loc=current_loc, alt=ALT, drone_id=DRONE_ID)
 
     timer = time.time()
     while not stop_event.is_set():
@@ -343,27 +336,21 @@ try:
             print(f"{DRONE_ID}>> Göreve Devam Ediyor")
             timer = time.time()
         
-        if vehicle.on_location(loc=current_loc, seq=0, drone_id=DRONE_ID):
-            if current_loc == locs[1]:
-                break
-            else:
-                current_loc = locs[1]
-                vehicle.go_to(loc=current_loc, alt=ALT, drone_id=DRONE_ID)
-        
         if algilandi.is_set():
-            time.sleep(0.01)
-            camera_yaw = (yaw.get() + 360) % 360
+            camera_yaw = yaw.get()
 
             print(f"{DRONE_ID}>> Objeyi algıladı")
             drone_loc = vehicle.get_pos(drone_id=DRONE_ID)
-            obj_pos = get_position(camera_distance=distance.get(), total_yaw=((camera_yaw + vehicle.get_yaw()) % 360), current_loc=drone_loc)
+            #obj_pos = get_position(camera_distance=distance.get(), camera_yaw=yaw.get(), current_loc=drone_loc)
+            obj_pos = get_position(camera_distance=distance.get(), camera_yaw=((camera_yaw + vehicle.get_yaw()) % 360), current_loc=drone_loc)
             print("Drondan uzaklik: ", get_location_distance(drone_loc[:2], obj_pos))
-            print("Kamera yaw: ", camera_yaw)
+            print("Kamera yaw'ı: ", camera_yaw)
             break
-        
+
         time.sleep(0.01)
     
     if algilandi.is_set():
+        vehicle.set_mode(mode="GUIDED")
         vehicle.go_to(loc=obj_pos, drone_id=DRONE_ID)
         print("Objenin konumuna gidiyor...")
         while not stop_event.is_set() and not vehicle.on_location(loc=obj_pos, seq=0, sapma=0.7, drone_id=DRONE_ID):
@@ -372,29 +359,19 @@ try:
         vehicle.set_mode(mode="LAND")
 
     else:
-        if home_pos != None:
-            vehicle.rtl(takeoff_pos=home_pos, alt=ALT, drone_id=DRONE_ID)
-        
-        else:
-            vehicle.set_mode(mode="RTL", drone_id=DRONE_ID)
+        vehicle.set_mode(mode="RTL", drone_id=DRONE_ID)
 
     print("Görev Tamamlandı")
 
 
 except KeyboardInterrupt:
     print("Exiting...")
-    if "home_pos" in locals():
-        failsafe(vehicle, home_pos, config)
-    else:
-        failsafe(vehicle)
+    failsafe(vehicle)
     if not stop_event.is_set():
         stop_event.set()
 
 except Exception as e:
-    if "home_pos" in locals():
-        failsafe(vehicle, home_pos, config)
-    else:
-        failsafe(vehicle)
+    failsafe(vehicle)
     if not stop_event.is_set():
         stop_event.set()
     print(e)
