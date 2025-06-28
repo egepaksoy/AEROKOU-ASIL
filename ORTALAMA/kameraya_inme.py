@@ -13,7 +13,7 @@ from geopy.distance import geodesic
 from geopy.point import Point
 sys.path.append('../pymavlink_custom')
 
-from pymavlink_custom import Vehicle
+from pymavlink_custom_nonblock import Vehicle
 
 
 
@@ -181,7 +181,6 @@ def local_camera(vehicle, camera_path, model, stop_event, algilandi, yaw, distan
     if not cap.isOpened():
         print(f"Dahili kamera {camera_path} açılamadı")
     
-    camera_connected.set()
     while not stop_event.is_set():
         visualised = False
         _, frame = cap.read()
@@ -216,6 +215,9 @@ def local_camera(vehicle, camera_path, model, stop_event, algilandi, yaw, distan
             visualise(screen_res, frame, middle_range)
 
         cv2.imshow("local image", frame)
+        
+        if not camera_connected.is_set():
+            camera_connected.set()
 
         # Çıkış için 'q' tuşuna basılması beklenir
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -234,7 +236,6 @@ def udp_camera(vehicle, ip, port, model, stop_event, algilandi, yaw, distance, c
     buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
     expected_counts = {}  # {frame_id: total_chunks, …}
 
-    camera_connected.set()
     while not stop_event.is_set():
         visualised = False
         packet, _ = sock.recvfrom(BUFFER_SIZE)
@@ -288,6 +289,8 @@ def udp_camera(vehicle, ip, port, model, stop_event, algilandi, yaw, distance, c
                     visualise(screen_res, frame, middle_range)
 
                 cv2.imshow("udp image", frame)
+                if not camera_connected.is_set():
+                    camera_connected.set()
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
