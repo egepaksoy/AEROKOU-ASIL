@@ -1,6 +1,6 @@
 from geopy.point import Point
 from geopy.distance import geodesic
-import calc_loc
+import YKI.libs.calc_loc as calc_loc
 
 # Başlangıç konumu
 loc = (40.71199, 30.0245)

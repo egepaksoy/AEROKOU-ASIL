@@ -5,10 +5,10 @@ import sys
 sys.path.append('../../pymavlink_custom')
 
 from pymavlink_custom import Vehicle
-import tcp_handler
-import calc_loc
-import serial_handler
-import image_processing_handler
+import YKI.libs.tcp_handler as tcp_handler
+import YKI.libs.calc_loc as calc_loc
+import YKI.libs.serial_handler as serial_handler
+import YKI.libs.image_processing_handler as image_processing_handler
 import math
 import keyboard
 

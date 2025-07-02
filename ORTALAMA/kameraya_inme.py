@@ -324,8 +324,8 @@ current_loc = locs[0]
 
 vehicle = Vehicle(config["DRONE"]["path"])
 
-threading.Thread(target=local_camera, args=(vehicle, 0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
-#threading.Thread(target=udp_camera, args=(vehicle, config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+#threading.Thread(target=local_camera, args=(vehicle, 0, model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
+threading.Thread(target=udp_camera, args=(vehicle, config["UDP"]["ip"], config["UDP"]["port"], model, stop_event, algilandi, yaw, distance, camera_connected), daemon=True).start()
 
 while not stop_event.is_set() and not camera_connected.is_set():
     time.sleep(0.05)

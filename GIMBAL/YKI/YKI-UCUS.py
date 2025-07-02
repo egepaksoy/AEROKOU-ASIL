@@ -6,10 +6,10 @@ import math
 sys.path.append('../../pymavlink_custom')
 
 from pymavlink_custom import Vehicle
-import tcp_handler
-import calc_loc
-import image_processing_handler
-import gimbal_controller
+import YKI.libs.tcp_handler as tcp_handler
+import YKI.libs.calc_loc as calc_loc
+import YKI.libs.image_processing_handler as image_processing_handler
+import YKI.libs.gimbal_controller as gimbal_controller
 
 def failsafe(vehicle, home_pos=None, config: json=None):
     def failsafe_drone_id(vehicle, drone_id, home_pos=None):
@@ -56,25 +56,6 @@ def failsafe(vehicle, home_pos=None, config: json=None):
         t.join()
 
     print(f"{vehicle.drone_ids} id'li Drone(lar) Failsafe aldi")
-
-
-def distance(loc1, loc2):
-    # Dünya yarıçapı (metre cinsinden)
-    R = 6371000  
-    
-    # Dereceden radiana dönüşüm
-    phi1 = math.radians(loc1[0])
-    phi2 = math.radians(loc2[0])
-
-    d_phi = math.radians(loc2[0] - loc1[0])
-    d_lambda = math.radians(loc2[1] - loc1[1])
-
-    # Haversine formülü
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-    distance = R * c  # mesafe (metre)
-    return distance
 
 
 #? Gerekliler
