@@ -609,10 +609,6 @@ class Vehicle():
                 print("COM portu bağlı değil.")
                 exit()
 
-        if "tcp" not in address and "udp" not in address:
-            if not os.path.exists(address):
-                print("Dosya yolu yanlis yada yok:\n", address)
-                exit()
         print("Baglanti yolu onaylandi")
         return address
 

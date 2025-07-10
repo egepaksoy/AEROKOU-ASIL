@@ -9,7 +9,7 @@ import math
 from queue import Queue
 
 class Handler:
-    def __init__(self, stop_event, objects_queue: Queue):
+    def __init__(self, stop_event):
         self.model = None
         self.proccessing = False
         self.stop_event = stop_event
@@ -18,7 +18,71 @@ class Handler:
         self.crosshair_color = (255, 255, 0)
         self.screen_ratio = None
 
-        self.objects_queue = objects_queue
+    def local_camera_new(self, camera_path, objects_queue: Queue):
+        cap = cv2.VideoCapture(camera_path)
+
+        if not cap.isOpened():
+            print(f"Dahili kamera {camera_path} açılamadı")
+            return
+
+        while not self.stop_event.is_set():
+            ret, frame = cap.read()
+            objects = []
+
+            if self.screen_ratio == None:
+                self.screen_ratio = (frame.shape[1], frame.shape[0])
+                print(self.screen_ratio)
+
+            if self.proccessing:
+                results = self.model(frame, verbose=False)
+                for r in results:
+                    boxes = r.boxes
+                    for box in boxes:
+                        if box.conf[0] < 0.90:
+                            continue
+                        # Sınırlayıcı kutu koordinatlarını al
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+
+                        obj_center = ((x1 + x2)/2, (y1 + y2)/2)
+
+                        # Sınıf ve güven skorunu al
+                        cls = int(box.cls[0].item())
+                        conf = box.conf[0].item()
+
+                        # Sınıf adını al
+                        class_name = self.model.names[cls]
+
+                        # Bilgileri ekrana yazdır
+                        print(f"Sınıf: {class_name}, Güven: {conf:.2f}, Konum: ({x1:.0f}, {y1:.0f}, {x2:.0f}, {y2:.0f}")
+
+                        # Nesneyi çerçeve içine al ve etiketle
+                        cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                        cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1 - 10)), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                                
+                        objects.append([class_name, self.distance(obj_center)])
+
+            if self.show_crosshair:
+                height, width, _ = frame.shape
+
+                # Ortadaki + işaretinin koordinatları
+                center_x = width // 2
+                center_y = height // 2
+                cross_size = 20  # Artı işaretinin uzunluğu
+
+                # Yatay çizgi
+                cv2.line(frame, (center_x - cross_size, center_y), (center_x + cross_size, center_y), self.crosshair_color, 5)
+                # Dikey çizgi
+                cv2.line(frame, (center_x, center_y - cross_size), (center_x, center_y + cross_size), self.crosshair_color, 5)
+
+                        
+            if self.showing_image:
+                objects_queue.put_nowait(objects)
+                cv2.imshow("İşlenen görüntü", frame)
+
+            # Çıkış için 'q' tuşuna basılması beklenir
+            if cv2.waitKey(10) & 0xFF == ord('q'):
+                break
 
     def local_camera(self, camera_path):
         cap = cv2.VideoCapture(camera_path)
@@ -34,7 +98,7 @@ class Handler:
                 self.screen_ratio = (frame.shape[1], frame.shape[0])
                 print(self.screen_ratio)
 
-            if time.time() - start_time > 0.1 and self.proccessing:
+            if self.proccessing:
                 results = self.model(frame, verbose=False)
                 for r in results:
                     objects = []
@@ -265,7 +329,7 @@ class Handler:
             del expected_counts[frame_id]
 
     def distance(self, obj_pos):
-        return math.sqrt((obj_pos[0] - self.screen_ratio[0])**2 + (obj_pos[1] - self.screen_ratio[1])**2)
+        return math.sqrt((obj_pos[0] - self.screen_ratio[0]/2)**2 + (obj_pos[1] - self.screen_ratio[1]/2)**2)
     
     def show_hide_crosshair(self, show):
         self.show_crosshair = show

@@ -1,0 +1,39 @@
+{
+    "CONN-PORT": "udp:172.22.160.1:14550",
+    "GOZLEMCI": 
+    {
+        "id": 1,
+        "alt": 4
+    },
+    "SALDIRI1":
+    {
+        "id": 2
+    },
+    "SALDIRI2":
+    {
+        "id": 3
+    },
+    "SALDIRI_ALT": 5,
+    "KEYS": 
+    {
+        "select": "z", 
+        "delete": "x",
+        "start": "c"
+    },
+    "model": "./models/kullanilcak.pt",
+    "local_camera": 0,
+    "TCP": 
+    {
+        "ip": "192.168.31.108",
+        "port": 9998
+    },
+    "UDP":
+    {
+        "ip": "0.0.0.0",
+        "port": 9999
+    },
+    "ARDUINO":
+    {
+        "port": "com5"
+    }
+}

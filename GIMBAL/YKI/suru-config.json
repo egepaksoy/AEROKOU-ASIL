@@ -1,23 +1,23 @@
 {
-    "CONN-PORT": "udp:172.22.160.1:14550",
+    "CONN-PORT": "com6",
     "GOZLEMCI":
     {
         "id": 2,
-        "alt": 5
+        "alt": 4
     },
     "SALDIRI1":
     {
-        "id": 1,
-        "alt": 4
+        "id": 3,
+        "alt": 5
     },
     "SALDIRI2":
     {
-        "id": 2,
-        "alt": 4
+        "id": 1,
+        "alt": 5
     },
     "TCP":
     {
-        "ip": "192.168.0.120",
+        "ip": "192.168.0.140",
         "port": 9998
     },
     "UDP":

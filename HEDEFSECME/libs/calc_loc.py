@@ -35,6 +35,8 @@ def calc_location_geopy(current_loc, yaw_angle, tcp_data):
     distance = abs_distance * math.cos(math.radians(servo_y_angle))
 
     abs_angle = (yaw_angle + servo_x_angle + 360) % 360
+    #! burayı kaldır
+    print(f"abs yaw angle: {abs_angle}")
 
     start_loc = Point(current_loc[0], current_loc[1])
 
