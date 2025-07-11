@@ -1,16 +1,17 @@
 import cv2
+import threading
 import socket
 import struct
 import sys
 import numpy as np
 
 
-if len(sys.argv) != 3:
-    print("kod kullanımı: python image_listener.py <ip> <port>")
+if len(sys.argv) != 2:
+    print("kod kullanımı: python image_listener.py <port>")
     exit(1)
 
-ip = sys.argv[1]
-port = int(sys.argv[2])
+ip = "0.0.0.0"
+port = int(sys.argv[1])
 
 try:
     BUFFER_SIZE = 65536
@@ -23,7 +24,9 @@ try:
     buffers = {}  # {frame_id: {chunk_id: bytes, …}, …}
     expected_counts = {}  # {frame_id: total_chunks, …}
 
-    while True:
+    stop_event = threading.Event()
+
+    while not stop_event.is_set():
         packet, _ = sock.recvfrom(BUFFER_SIZE)
         frame_id, chunk_id, is_last = struct.unpack(HEADER_FMT, packet[:HEADER_SIZE])
         chunk_data = packet[HEADER_SIZE:]
@@ -61,3 +64,5 @@ finally:
         del buffers[frame_id]
     if frame_id in expected_counts:
         del expected_counts[frame_id]
+    
+    stop_event.set()

@@ -6,10 +6,9 @@ import cv2
 import numpy as np
 import struct
 import socket
-import queue
 from math import ceil
 
-sys.path.append('./pymavlink_custom')
+sys.path.append('../pymavlink_custom')
 from pymavlink_custom import Vehicle
 from mqtt_controller import magnet_control, rotate_servo, cleanup
 
@@ -55,13 +54,14 @@ def image_recog_new(picam2, ip: str, port: int, stop_event: threading.Event, bro
     upper_blue = np.array([140, 255, 255])
 
 
-    detected_obj = ""
     frame_id = 0
     try:
         print(f"{UDP_IP} adresine gönderim başladı")
         broadcast_started.set()
         while not stop_event.is_set():
+            detected_obj = ""
             frame = picam2.capture_array()
+            frame = cv2.flip(frame, -1)
 
             ####### GORUNTU ISLEME BASLADI ########
             blurred = cv2.GaussianBlur(frame, (5, 5), 0)
@@ -88,7 +88,7 @@ def image_recog_new(picam2, ip: str, port: int, stop_event: threading.Event, bro
                         detected_obj = shape_name
                         print(detected_obj)
 
-            if detected_obj:
+            if detected_obj != "":
                 with shared_state_lock:
                     shared_state["last_object"] = detected_obj
                     shared_state["timestamp"] = time.time()
@@ -140,21 +140,33 @@ time.sleep(2)  # Kamera başlatma süresi için bekle
 
 threading.Thread(target=image_recog_new, args=(picam2, sys.argv[3], int(sys.argv[4]), stop_event, broadcast_started, shared_state, shared_state_lock), daemon=True).start()
 
-magnet_control(True, True)
-print("mıknatıslar açık")
-
 vehicle = Vehicle(sys.argv[1])
 DRONE_ID = int(sys.argv[2])
-ALT = 5
+ALT = 6
 
-loc1 = (40.7121322, 30.0245741, ALT)  # konum 1
-loc2 = (40.7120803, 30.024594, ALT)  # konum 2
-locs = [loc1, loc2]
+merkez = (40.7121035, 30.0245928, ALT)
+
+objects = {"Altigen": {"sira": 1, "miknatis": 2}, "Ucgen": {"sira": 2, "miknatis": 1}}
+
+sonra_birakilcak_obj = None
+sonra_birakilcak_pos = None
+
+tarama_sayisi = 1
+yapilan_tarama_sayisi = 0
+
+area_meter = 10
+distance_meter = 3
+
+drone_locs = vehicle.scan_area_wpler(center_loc=merkez, alt=ALT, area_meter=area_meter, distance_meter=distance_meter)
+print(f"{yapilan_tarama_sayisi + 1}. tarama wp sayısı: {len(drone_locs)}")
+print(f"{yapilan_tarama_sayisi + 1}. tarama alanı: {area_meter}")
+print(f"{yapilan_tarama_sayisi + 1}. tarama aralık mesafesi: {distance_meter}")
 
 try:
     while not stop_event.is_set() and not broadcast_started.is_set():
         time.sleep(0.5)
 
+    magnet_control(True, True)
     rotate_servo(0)
     print("servo duruyor")
 
@@ -166,9 +178,8 @@ try:
     print(f"{DRONE_ID}>> Kalkış tamamlandı")
 
     current_loc = 0
-    vehicle.go_to(loc=locs[current_loc], alt=ALT, drone_id=DRONE_ID)
-    print(f"{DRONE_ID}>> Hedef 1'e gidiyor")
-    
+    vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
+
     with shared_state_lock:
         shared_state["last_object"] = None  # tekrar tetiklenmesini engelle
 
@@ -182,69 +193,110 @@ try:
             print(obj)
             if dropped_objects != []:
                 print(dropped_objects)
-            if obj == "Ucgen" and obj not in dropped_objects:
-                print("Üçgen Tespit edildi")
 
+            if obj not in dropped_objects:
                 pos = vehicle.get_pos(drone_id=DRONE_ID)
 
+                sira = objects[obj]["sira"]
+                miknatis = objects[obj]["miknatis"]
+                
+                if sira == 1 or (len(dropped_objects) != 0 and obj not in dropped_objects):
+                    print(f"{obj} bulundu")
+
+                    vehicle.go_to(loc=pos, alt=ALT, drone_id=DRONE_ID)
+                    while not stop_event.is_set() and not vehicle.on_location(loc=pos, seq=0, sapma=1, drone_id=DRONE_ID):
+                        time.sleep(0.5)
+
+                    time.sleep(3)
+                    if miknatis == 2:
+                        magnet_control(True, False)
+                    else:
+                        magnet_control(False, True)
+                    print(f"mıknatıs {miknatis} kapatıldı")
+                    time.sleep(2)
+
+                    print(f"Yük {sira} bırakıldı tarama devam ediyor...")
+                    vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
+
+                    dropped_objects.append(obj)
+
+                    with shared_state_lock:
+                        shared_state["last_object"] = None  # tekrar tetiklenmesini engelle
+                    start_time = time.time()
+
+                else:
+                    print(f"{obj} bulundu sonradan bırakılcak")
+                    sonra_birakilcak_obj = obj
+                    sonra_birakilcak_pos = pos
+
+        if sonra_birakilcak_obj != None and len(dropped_objects) != 0:
+            if sonra_birakilcak_obj not in dropped_objects:
+                obj = sonra_birakilcak_obj
+                pos = sonra_birakilcak_pos
+
+                miknatis = objects[obj]["miknatis"]
+
+                print(f"{obj} {pos} konumuna bırakılmaya gidiyor...")
+                
                 vehicle.go_to(loc=pos, alt=ALT, drone_id=DRONE_ID)
-                while not stop_event.is_set() and not vehicle.on_location(loc=pos, seq=0, sapma=0.5, drone_id=DRONE_ID):
+                while not stop_event.is_set() and not vehicle.on_location(loc=pos, seq=0, sapma=1, drone_id=DRONE_ID):
                     time.sleep(0.5)
 
                 time.sleep(3)
-                print("mıknatıs2 kapatıldı")
-                time.sleep(2)
-
-                vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
-                print("Yük 2 bırakıldı tarama devam ediyor...")
-                vehicle.go_to(loc=locs[current_loc], alt=ALT, drone_id=DRONE_ID)
-
-                dropped_objects.append(obj)
-
-                with shared_state_lock:
-                    shared_state["last_object"] = None  # tekrar tetiklenmesini engelle
-                start_time = time.time()
-            
-            if obj == "Altigen" and obj not in dropped_objects:
-                print("Altıgen Tespit edildi")
-
-                pos = vehicle.get_pos(drone_id=DRONE_ID)
-
-                vehicle.go_to(loc=pos, alt=ALT, drone_id=DRONE_ID)
-                while not stop_event.is_set() and not vehicle.on_location(loc=pos, seq=0, sapma=0.5, drone_id=DRONE_ID):
-                    time.sleep(0.5)
-
-                time.sleep(3)
-                print("mıknatıs1 kapatıldı")
+                if miknatis == 2:
+                    magnet_control(True, False)
+                else:
+                    magnet_control(False, True)
+                print(f"mıknatıs {miknatis} kapatıldı")
                 time.sleep(2)
                 
-                vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
-                print("Yük 1 bırakıldı tarama devam ediyor...")
-                vehicle.go_to(loc=locs[current_loc], alt=ALT, drone_id=DRONE_ID)
+                print(f"Yük {objects[obj]['sira']} bırakıldı tarama devam ediyor...")
+                vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
 
                 dropped_objects.append(obj)
+                rotate_servo(0)
 
-                with shared_state_lock:
-                    shared_state["last_object"] = None  # tekrar tetiklenmesini engelle
+                sonra_birakilcak_obj = None
+                sonra_birakilcak_pos = None
+
                 start_time = time.time()
         
-        if vehicle.on_location(loc=locs[current_loc], seq=0, sapma=1, drone_id=DRONE_ID) and (obj == None or obj in dropped_objects):
-            print(f"{DRONE_ID}>> Hedef {current_loc+1} ulaştı")
-            if current_loc + 1 == len(locs):
-                print("Son konuma gelindi kalkışa donuyor...")
-                break
-            current_loc += 1
-            vehicle.go_to(loc=locs[current_loc], alt=ALT, drone_id=DRONE_ID)
+        if vehicle.on_location(loc=drone_locs[current_loc], seq=0, sapma=1, drone_id=DRONE_ID):
+            rotate_servo(0)
             start_time = time.time()
+            print(f"{DRONE_ID}>> drone {current_loc + 1} ulasti")
+            if current_loc + 1 == len(drone_locs):
+                yapilan_tarama_sayisi += 1
+                if tarama_sayisi - yapilan_tarama_sayisi > 0:
+                    print(f"{yapilan_tarama_sayisi + 1}. tarama baslıyor")
+                    new_distance_meter = distance_meter / (yapilan_tarama_sayisi + 1)
+                    drone_locs = vehicle.scan_area_wpler(center_loc=merkez, alt=ALT, area_meter=area_meter, distance_meter=new_distance_meter)
+                    current_loc = 0
 
-        if time.time() - start_time >= 5:
-            print("Nesneleri arıyor...")
-            start_time = time.time()
+                    print(f"{yapilan_tarama_sayisi + 1}. tarama wp sayısı: {len(drone_locs)}")
+                    print(f"{yapilan_tarama_sayisi + 1}. tarama alanı: {area_meter}")
+                    print(f"{yapilan_tarama_sayisi + 1}. tarama aralık mesafesi: {new_distance_meter}")
+
+                    vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
+                elif sonra_birakilcak_obj == None and sonra_birakilcak_pos == None:
+                    print(f"{DRONE_ID}>> Drone taramayı bitirdi")
+                    break
+            else:
+                current_loc += 1
+                vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
+                print(f"{DRONE_ID}>> {current_loc + 1}/{len(drone_locs)}. konuma gidiyor...")
 
         time.sleep(0.05)
-    
-    print(dropped_objects)
-    vehicle.rtl(takeoff_pos=home_pos, alt=ALT, drone_id=DRONE_ID)
+
+    print(f"Algilanan objeler: {dropped_objects}")
+    print(f"{DRONE_ID}>> Kalkış konumuna gidiyor")
+    vehicle.go_to(loc=home_pos, alt=ALT, drone_id=DRONE_ID)
+
+    while not stop_event.is_set() and not vehicle.on_location(loc=home_pos, seq=0, sapma=1, drone_id=DRONE_ID):
+        time.sleep(0.5)
+
+    vehicle.set_mode(mode="LAND", drone_id=DRONE_ID)
+    print("Görev tamamlandı")
 
 except KeyboardInterrupt:
     print("Klavye ile çıkış yapıldı")
@@ -256,5 +308,6 @@ except Exception as e:
 
 finally:
     vehicle.vehicle.close()
+    input("Servoyu kapatmak için Enter'a basın")
     cleanup()
     print("GPIO temizlendi, bağlantı kapatıldı")

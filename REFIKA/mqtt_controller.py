@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 import RPi.GPIO as GPIO
 import time
 
-BROKER_ADRESS = "192.168.31.108"
+BROKER_ADRESS = "192.168.0.120"
 BROKER_PORT = 1883
 TOPIC = "kontrol"
 
