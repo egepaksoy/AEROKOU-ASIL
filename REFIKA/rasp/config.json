@@ -1,10 +1,10 @@
 {
-    "CONN-STR": "",
+    "CONN-STR": "udp:172.22.160.1:14550",
     "DRONE":
     {
         "id": 1,
-        "ALT": 8,
-        "loc": [40, 30],
+        "alt": 8,
+        "loc": [-35.36339086, 149.17055468],
         "area_meter": 10,
         "distance_meter": 2,
         "tarama_sayisi": 1
