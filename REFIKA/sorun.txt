@@ -1,0 +1,5 @@
+görüntü aktarımında her türlü sorun çıkıyor. görüntü almıyor, nesne tanımıyor. ekrana ucgen algiten yazdırmayı kaldır. yükler bitince tarama bitir. taramada alçalmayı çöz. alçalma testini waypoint listesindeki yükseklikleri kontrol et
+
+------
+raspberry'ye flask kur
+raspberry'ye yeni kodları at

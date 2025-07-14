@@ -1,0 +1,14 @@
+{
+    "CONN-STR": "",
+    "DRONE":
+    {
+        "id": 1,
+        "ALT": 8,
+        "loc": [40, 30],
+        "area_meter": 10,
+        "distance_meter": 2,
+        "tarama_sayisi": 1
+    },
+    "UDP-PORT": 9999,
+    "OBJECTS": {"Altigen": {"sira": 1, "miknatis": 2}, "Ucgen": {"sira": 2, "miknatis": 1}}
+}

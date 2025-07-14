@@ -1,16 +1,15 @@
 import time
 import sys
 import threading
-from picamera2 import Picamera2
 import cv2
 import numpy as np
 import struct
 import socket
 from math import ceil
+from flask import Flask, Response
 
 sys.path.append('../pymavlink_custom')
 from pymavlink_custom import Vehicle
-from mqtt_controller import magnet_control, rotate_servo, cleanup
 
 
 def failsafe(vehicle):
@@ -25,126 +24,111 @@ def failsafe(vehicle):
     for t in threads:
         t.join()
     print(f"Dronlar {vehicle.drone_ids} Failsafe aldı")
+def image_recog_flask(cap: cv2.VideoCapture, port, stop_event):
+    app = Flask(__name__)
 
-def is_equilateral(approx, tolerance=0.15):
-    if len(approx) < 3:
-        return False
-    sides = []
-    for i in range(len(approx)):
-        pt1 = approx[i][0]
-        pt2 = approx[(i + 1) % len(approx)][0]
-        dist = np.linalg.norm(pt1 - pt2)
-        sides.append(dist)
-    mean = np.mean(sides)
-    return all(abs(s - mean) / mean < tolerance for s in sides)
+    def is_equilateral(approx, tolerance=0.15):
+        if len(approx) < 3:
+            return False
+        sides = []
+        for i in range(len(approx)):
+            pt1 = approx[i][0]
+            pt2 = approx[(i + 1) % len(approx)][0]
+            dist = np.linalg.norm(pt1 - pt2)
+            sides.append(dist)
+        mean = np.mean(sides)
+        return all(abs(s - mean) / mean < tolerance for s in sides)
 
-def image_recog_new(picam2, ip: str, port: int, stop_event: threading.Event, broadcast_started: threading.Event, shared_state: dict, shared_state_lock: threading.Lock):
-    UDP_IP, UDP_PORT = ip, port
-    CHUNK_SIZE = 1400                      # ~ MTU altı
-    HEADER_FMT = '<LHB'                   # frame_id:uint32, chunk_id:uint16, is_last:uint8
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    # HSV renk aralıkları
-    lower_red1 = np.array([0, 70, 50])
+    # Renk aralıkları
+    lower_red1 = np.array([0, 100, 100])
     upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([170, 70, 50])
-    upper_red2 = np.array([180, 255, 255])
-    lower_blue = np.array([100, 150, 50])
-    upper_blue = np.array([140, 255, 255])
+    lower_red2 = np.array([160, 100, 100])
+    upper_red2 = np.array([179, 255, 255])
+    lower_blue = np.array([100, 100, 100])
+    upper_blue = np.array([130, 255, 255])
 
+    shared_state = {"last_object": None, "timestamp": 0}
+    shared_state_lock = threading.Lock()
 
-    frame_id = 0
-    try:
-        print(f"{UDP_IP} adresine gönderim başladı")
-        broadcast_started.set()
-        while not stop_event.is_set():
-            detected_obj = ""
-            frame = picam2.capture_array()
-            frame = cv2.flip(frame, -1)
+    @app.route('/')
+    def video():
+        def gen_frames():
+            global last_frame
+            frame_lock = threading.Lock()
 
-            ####### GORUNTU ISLEME BASLADI ########
-            blurred = cv2.GaussianBlur(frame, (5, 5), 0)
-            hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+            broadcast_started.set()
+            while not stop_event.is_set():
+                # 1. Kamera görüntüsü al ve çevir
+                ret, frame = cap.read()
+                frame = cv2.flip(frame, -1)
+                detected_obj = ""
 
-            red_mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-            red_mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-            red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+                # 2. Görüntü işleme başlasın
+                blurred = cv2.GaussianBlur(frame, (5, 5), 0)
+                hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
-            blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+                red_mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+                red_mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+                blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
-            for color_mask, shape_name, target_sides, color in [
-                (red_mask, "Ucgen", 3, (0, 0, 255)),
-                (blue_mask, "Altigen", 6, (255, 0, 0))
-            ]:
-                contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                for cnt in contours:
-                    epsilon = 0.02 * cv2.arcLength(cnt, True)
-                    approx = cv2.approxPolyDP(cnt, epsilon, True)
-                    if len(approx) == target_sides and is_equilateral(approx):
-                        cv2.drawContours(frame, [approx], 0, color, 2)
-                        x, y = approx[0][0]
-                        cv2.putText(frame, shape_name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                        detected_obj = shape_name
-                        print(detected_obj)
+                for color_mask, shape_name, target_sides, color in [
+                    (red_mask, "Ucgen", 3, (0, 0, 255)),
+                    (blue_mask, "Altigen", 6, (255, 0, 0))
+                ]:
+                    contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    for cnt in contours:
+                        epsilon = 0.02 * cv2.arcLength(cnt, True)
+                        approx = cv2.approxPolyDP(cnt, epsilon, True)
+                        if len(approx) == target_sides and is_equilateral(approx):
+                            cv2.drawContours(frame, [approx], 0, color, 2)
+                            x, y = approx[0][0]
+                            cv2.putText(frame, shape_name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                            detected_obj = shape_name
+                            print(detected_obj)
 
-            if detected_obj != "":
-                with shared_state_lock:
-                    shared_state["last_object"] = detected_obj
-                    shared_state["timestamp"] = time.time()
+                if detected_obj != "":
+                    with shared_state_lock:
+                        shared_state["last_object"] = detected_obj
+                        shared_state["timestamp"] = time.time()
 
-            _, buf = cv2.imencode('.jpg', frame)
-            data = buf.tobytes()
-            total_chunks = ceil(len(data) / CHUNK_SIZE)
-            ###### GORUNTU ISLEME BITTI ###########
+                # 3. Görüntüyü paylaş
+                with frame_lock:
+                    last_frame = frame.copy()
 
-            for chunk_id in range(total_chunks):
-                start = chunk_id * CHUNK_SIZE
-                end = start + CHUNK_SIZE
-                chunk = data[start:end]
-                is_last = 1 if chunk_id == total_chunks - 1 else 0
-                header = struct.pack(HEADER_FMT, frame_id, chunk_id, is_last)
-                sock.sendto(header + chunk, (UDP_IP, UDP_PORT))
+                _, buffer = cv2.imencode('.jpg', frame)
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                        b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-            frame_id = (frame_id + 1) & 0xFFFFFFFF
-            
-            time.sleep(0.01)
+        return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    except KeyboardInterrupt:
-        print("Ctrl+C ile çıkıldı.")
+    app.run(host='0.0.0.0', port=port)
 
-    finally:
-        # Kamera ve soketi kapat
-        print("Program sonlandırıldı.")
-        picam2.stop()
-        sock.close()
-
-
-if len(sys.argv) != 5:
-    print("Usage: python main.py <connection_string> <drone_id> <ip> <port>")
+if len(sys.argv) != 4:
+    print("Usage: python main.py <connection_string> <drone_id> <port>")
     sys.exit(1)
 
 
 stop_event = threading.Event()
-broadcast_started = threading.Event()
 shared_state = {"last_object": None, "timestamp": 0}
 shared_state_lock = threading.Lock()
 
 dropped_objects = []
 
-# PiCamera2'yi başlat ve yapılandır
-picam2 = Picamera2()
-picam2.configure(picam2.create_video_configuration(main={"format": "RGB888", "size": (640, 480)}))
-picam2.start()
-time.sleep(2)  # Kamera başlatma süresi için bekle
+cap = cv2.VideoCapture(0)
 
-threading.Thread(target=image_recog_new, args=(picam2, sys.argv[3], int(sys.argv[4]), stop_event, broadcast_started, shared_state, shared_state_lock), daemon=True).start()
+#threading.Thread(target=image_recog_new, args=(picam2, sys.argv[3], int(sys.argv[4]), stop_event, broadcast_started, shared_state, shared_state_lock), daemon=True).start()
+app = Flask(__name__)
+last_frame = None
+broadcast_started = threading.Event()
+threading.Thread(target=image_recog_flask, args=(cap, int(sys.argv[3]), stop_event), daemon=True).start()
 
 vehicle = Vehicle(sys.argv[1])
 DRONE_ID = int(sys.argv[2])
 ALT = 6
 
-merkez = (40.7121035, 30.0245928, ALT)
+merkez = (-35.36291919, 149.16513516, ALT)
 
 objects = {"Altigen": {"sira": 1, "miknatis": 2}, "Ucgen": {"sira": 2, "miknatis": 1}}
 
@@ -165,10 +149,6 @@ print(f"{yapilan_tarama_sayisi + 1}. tarama aralık mesafesi: {distance_meter}")
 try:
     while not stop_event.is_set() and not broadcast_started.is_set():
         time.sleep(0.5)
-
-    magnet_control(True, True)
-    rotate_servo(0)
-    print("servo duruyor")
 
     vehicle.set_mode("GUIDED", drone_id=DRONE_ID)
     vehicle.arm_disarm(True, drone_id=DRONE_ID)
@@ -194,7 +174,7 @@ try:
             if dropped_objects != []:
                 print(dropped_objects)
 
-            if obj not in dropped_objects:
+            if obj not in dropped_objects and sonra_birakilcak_obj != obj:
                 pos = vehicle.get_pos(drone_id=DRONE_ID)
 
                 sira = objects[obj]["sira"]
@@ -208,10 +188,6 @@ try:
                         time.sleep(0.5)
 
                     time.sleep(3)
-                    if miknatis == 2:
-                        magnet_control(True, False)
-                    else:
-                        magnet_control(False, True)
                     print(f"mıknatıs {miknatis} kapatıldı")
                     time.sleep(2)
 
@@ -243,10 +219,6 @@ try:
                     time.sleep(0.5)
 
                 time.sleep(3)
-                if miknatis == 2:
-                    magnet_control(True, False)
-                else:
-                    magnet_control(False, True)
                 print(f"mıknatıs {miknatis} kapatıldı")
                 time.sleep(2)
                 
@@ -254,7 +226,6 @@ try:
                 vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
 
                 dropped_objects.append(obj)
-                rotate_servo(0)
 
                 sonra_birakilcak_obj = None
                 sonra_birakilcak_pos = None
@@ -262,7 +233,6 @@ try:
                 start_time = time.time()
         
         if vehicle.on_location(loc=drone_locs[current_loc], seq=0, sapma=1, drone_id=DRONE_ID):
-            rotate_servo(0)
             start_time = time.time()
             print(f"{DRONE_ID}>> drone {current_loc + 1} ulasti")
             if current_loc + 1 == len(drone_locs):
@@ -309,5 +279,4 @@ except Exception as e:
 finally:
     vehicle.vehicle.close()
     input("Servoyu kapatmak için Enter'a basın")
-    cleanup()
     print("GPIO temizlendi, bağlantı kapatıldı")
