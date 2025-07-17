@@ -116,12 +116,10 @@ try:
             current_loc = vehicle.get_pos(drone_id=DRONE_ID)
             current_yaw = vehicle.get_yaw(drone_id=DRONE_ID)
 
-            old_target_loc = calc_loc.calc_location(current_loc=current_loc, yaw_angle=current_yaw, tcp_data=tcp_data, DEG=vehicle.DEG)
             target_loc = calc_loc.calc_location_geopy(current_loc=current_loc, yaw_angle=current_yaw, tcp_data=tcp_data, DEG=vehicle.DEG)
 
             print(f"{DRONE_ID}>> hedef bulundu: {target_loc}")
             print(f"Hedefe olan mesafe: {calc_loc.get_dist(current_loc, target_loc)}m")
-            print(f"Eski ile yeni konum arası mesafe: {calc_loc.get_dist(target_loc, old_target_loc)}")
             break
             
         time.sleep(0.01)

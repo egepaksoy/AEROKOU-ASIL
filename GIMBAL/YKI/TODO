@@ -1,0 +1,8 @@
+saldiri ihalarinin goruntu aktarma kodu
+saldiri ihalaranindan gelen goruntuleri yeni araba modeli ile isleme
+OK:image_handler dosyasını duzenleme
+OK:islenen modelde algilanan objenin ne oldugunu kontrol etme ve ona gore inis gerceklestirme
+OK:suru-config dosyasını duzenleme
+test->HEDEF-ISARETLEME.py
+test->HEDEF-GORUNTUISLEME.py
+test

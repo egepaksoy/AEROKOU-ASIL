@@ -1,4 +1,3 @@
-import queue
 import socket
 import threading
 from threading import Thread
@@ -12,7 +11,8 @@ class TCPClient():
         self.connected = False
         self.stop_event = stop_event
 
-        self.data_queue = queue.Queue()
+        self.data = None
+        self.data_lock = threading.Lock()
 
         self.connect()
 
@@ -48,17 +48,18 @@ class TCPClient():
                 data = self.socket.recv(buffer_size).decode()
                 if not data:
                     break
-                self.data_queue.put(data)
+                with self.data_lock:
+                    self.data = data
 
             except Exception as e:
                 print(f"Client>> Receive failed: {e}")
                 break
 
     def get_data(self):
-        try:
-            return self.data_queue.get_nowait()  # En son veriyi al, boşsa hata verme
-        except queue.Empty:
-            return None
+        with self.data_lock:
+            data = self.data
+            self.data = None
+            return data
 
     def close(self):
         self.socket.close()
@@ -71,7 +72,9 @@ class TCPServer:
 
         self.server_socket.listen(5)  # Maksimum 5 client
         
-        self.data_queue = queue.Queue()  # Gelen verileri saklamak için Queue
+        self.data = None
+        self.data_lock = threading.Lock()
+
         self.stop_event = stop_event
         self.connected_addrs = []
         self.connected_clients = []
@@ -97,7 +100,8 @@ class TCPServer:
                 data = client_socket.recv(1024).decode()
                 if not data:
                     break  # Client bağlantıyı kapattıysa çık
-                self.data_queue.put(data)  # Gelen veriyi queue'ya ekle
+                with self.data_lock:
+                    self.data = data
                 
             except Exception as e:
                 print(f"Server>> Client connection error: {e}")
@@ -120,10 +124,10 @@ class TCPServer:
         return self.connected_addrs
     
     def get_data(self):
-        try:
-            return self.data_queue.get_nowait()
-        except queue.Empty:
-            return None
+        with self.data_lock:
+            data = self.data
+            self.data = None
+            return data
 
     def stop(self):
         self.server_socket.close()

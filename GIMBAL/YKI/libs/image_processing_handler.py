@@ -1,4 +1,5 @@
 #! GIBI
+import threading
 import cv2
 import socket
 import numpy as np
@@ -15,7 +16,7 @@ class Handler:
         self.show_crosshair = True
         self.crosshair_color = (255, 255, 0)
 
-    def local_camera(self, camera_path):
+    def local_camera(self, camera_path, detected_obj: dict=None, object_lock: threading.Lock=None):
         cap = cv2.VideoCapture(camera_path)
 
         if not cap.isOpened():
@@ -34,6 +35,7 @@ class Handler:
                             continue
                         # Sınırlayıcı kutu koordinatlarını al
                         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                        obj_center = ((x1+x2) / 2, (y1+y2) / 2)
 
                         # Sınıf ve güven skorunu al
                         cls = int(box.cls[0].item())
@@ -49,6 +51,11 @@ class Handler:
                         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                         cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1 - 10)), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                                    
+                        if object_lock != None and detected_obj != None:
+                            with object_lock:
+                                detected_obj["cls"] = class_name
+                                detected_obj["pos"] = obj_center
 
                 start_time = time.time()
             
@@ -73,7 +80,7 @@ class Handler:
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-    def udp_camera(self, ip, port):
+    def udp_camera(self, ip, port, detected_obj: dict=None, object_lock: threading.Lock=None):
         BUFFER_SIZE = 65536
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((ip, port))
@@ -105,6 +112,7 @@ class Handler:
                                         continue
                                     # Sınırlayıcı kutu koordinatlarını al
                                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                                    obj_center = ((x1+x2) / 2, (y1+y2) / 2)
 
                                     # Sınıf ve güven skorunu al
                                     cls = int(box.cls[0].item())
@@ -120,6 +128,11 @@ class Handler:
                                     cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                                     cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1 - 10)), 
                                                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+                                    if object_lock != None and detected_obj != None:
+                                        with object_lock:
+                                            detected_obj["cls"] = class_name
+                                            detected_obj["pos"] = obj_center
 
                             start_time = time.time()
                         

@@ -23,7 +23,7 @@ def calc_location(current_loc, yaw_angle, tcp_data, DEG):
 
     return current_x_loc, current_y_loc
 
-def calc_location_geopy(current_loc, yaw_angle, tcp_data, DEG):
+def calc_location_geopy(current_loc, yaw_angle, tcp_data):
     #! tcp_data_format: distance|servo_x|servo_y
 
     print("TCP Data Fonk: ", tcp_data)

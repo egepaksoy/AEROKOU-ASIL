@@ -1,23 +1,49 @@
 {
-    "CONN-PORT": "com6",
+    "CONN-PORT": "udp:172.22.160.1:14550",
     "GOZLEMCI":
     {
         "id": 2,
-        "alt": 4
+        "alt": 4,
+        "alcalma_alt": 3
     },
     "SALDIRI1":
     {
         "id": 3,
-        "alt": 5
+        "alt": 5,
+        "alcalma_alt": 3
     },
     "SALDIRI2":
     {
         "id": 1,
-        "alt": 5
+        "alt": 5,
+        "alcalma_alt": 3
     },
+    "SALDIRILAR":
+    [
+        {
+            "id": 2,
+            "alt": 5,
+            "alcalma_alt": 3,
+            "UDP":
+            {
+                "ip": "192.168.0.140",
+                "port": 9994
+            }
+        },
+        {
+            "id": 1,
+            "alt": 5,
+            "alcalma_alt": 3,
+            "UDP":
+            {
+                "ip": "192.168.0.170",
+                "port": 9997
+            }
+        }
+    ],
     "TCP":
     {
-        "ip": "192.168.0.140",
+        "ip": "192.168.0.120",
         "port": 9998
     },
     "UDP":

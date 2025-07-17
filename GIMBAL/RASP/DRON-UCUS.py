@@ -135,6 +135,7 @@ try:
                 else:
                     arduino_val = arduino.read_value().strip()
                     print("arduino derece:", arduino_val)
+                    print("uzaklik:", distance)
 
                     if "|" in arduino_val:
                         arduino_val_split = arduino_val.split("|")
