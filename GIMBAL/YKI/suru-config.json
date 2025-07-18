@@ -6,22 +6,10 @@
         "alt": 4,
         "alcalma_alt": 3
     },
-    "SALDIRI1":
-    {
-        "id": 3,
-        "alt": 5,
-        "alcalma_alt": 3
-    },
-    "SALDIRI2":
-    {
-        "id": 1,
-        "alt": 5,
-        "alcalma_alt": 3
-    },
     "SALDIRILAR":
     [
         {
-            "id": 2,
+            "id": 3,
             "alt": 5,
             "alcalma_alt": 3,
             "UDP":

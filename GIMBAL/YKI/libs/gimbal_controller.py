@@ -2,8 +2,8 @@ import keyboard
 import threading
 import time
 
-import tcp_handler
-import calc_loc
+import libs.tcp_handler as tcp_handler
+import libs.calc_loc as calc_loc
 
 class GimbalHandler:
     def __init__(self, server, stop_event):
@@ -20,6 +20,7 @@ class GimbalHandler:
             tcp_data = None
             # Hedef secme
             if keyboard.is_pressed("x"):
+                print("Hedef secme tusuna basildi")
                 self.request_data()
 
                 tcp_data = server.get_data()
@@ -29,7 +30,8 @@ class GimbalHandler:
 
                 target_name = input("Hedef adini giriniz: ")
                 target_loc = calc_loc.calc_location_geopy(vehicle.get_pos(drone_id=DRONE_ID), vehicle.get_yaw(drone_id=DRONE_ID), tcp_data=tcp_data)
-                
+ 
+                min_dist_drone_id = None
                 for drone_id in vehicle.drone_ids:
                     if drone_id != DRONE_ID:
                         min_dist_drone_id = drone_id
@@ -39,15 +41,19 @@ class GimbalHandler:
                     if drone_id != DRONE_ID and drone_id not in targets:
                         if calc_loc.get_dist(vehicle.get_pos(drone_id=drone_id), target_loc) < min_drone_dist:
                             min_dist_drone_id = drone_id
-                
+
+                if min_dist_drone_id == None:
+                    print("min_dist_drone_id atanmadi")
+                    min_dist_drone_id = 3
                 new_target = {"cls": target_name, "loc": target_loc}
                 with target_locker:
                     targets[min_dist_drone_id] = new_target
-                
+
                 print(f"Hedef {target_name} {min_dist_drone_id} dronuna atandi")
 
             # Heddef silme
             elif keyboard.is_pressed("c"):
+                print("Hedef silme tusuna basildi")
                 deleted = False
 
                 self.request_data()
@@ -58,7 +64,7 @@ class GimbalHandler:
                     time.sleep(0.1)
 
                 target_loc = calc_loc.calc_location_geopy(vehicle.get_pos(drone_id=DRONE_ID), vehicle.get_yaw(drone_id=DRONE_ID), tcp_data=tcp_data)
-                
+
                 for drone_id in targets:
                     if calc_loc.get_dist(targets[drone_id]["loc"], target_loc) <= 2:
                         yes_no = input(f"Hedef {targets[drone_id]['cls']} silincek emin misiniz?\ny/n")
@@ -71,7 +77,7 @@ class GimbalHandler:
 
                         deleted = True
                         break
-                
+
                 if not deleted:
                     target_name = input("Silinecek Hedef adini giriniz: ")
                     for drone_id in targets:
@@ -80,14 +86,15 @@ class GimbalHandler:
                             targets.pop(drone_id)
                             deleted = True
                             break
-                
+
                 if not deleted:
                     print("Hedef silinemedi tekrar deneyin")
-            
+
             # Cikis
             elif keyboard.is_pressed("z"):
+                print("Hedef secme kapatildi")
                 break
-        
+
             time.sleep(0.05)
 
     def keyboard_controller(self):
@@ -136,18 +143,17 @@ class GimbalHandler:
             elif joystick_data != None:
                 if "|" in joystick_data:
                     joystick_data = joystick_data.strip()
-                
+
                     if int(joystick_data.split("|")[0]) > 0:
                         ser_x = 1 * ters
                     elif int(joystick_data.split("|")[0]) < 0:
                         ser_x = -1 * ters
-                    
+
                     if int(joystick_data.split("|")[1]) > 0:
                         ser_y = 1 * ters
                     elif int(joystick_data.split("|")[1]) < 0:
                         ser_y = -1 * ters
-                    
-            
+
             write_data = f"{ser_x}|{ser_y}\n"            
             self.server.send_data(write_data)
 

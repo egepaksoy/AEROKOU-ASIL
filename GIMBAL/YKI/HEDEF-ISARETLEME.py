@@ -68,11 +68,10 @@ def second_miss(stop_event, vehicle, config, targets, target_locker):
             target_loc = targets[drone_id]["loc"]
             alt = config["GOZLEMCI"]["alt"]
 
-            for saldiri_iha in config:
-                if "SALDIRI" in saldiri_iha:
-                    if config[saldiri_iha]["id"] == drone_id:
-                        alt = config[saldiri_iha]["alt"]
-                        break
+            for saldiri_iha in config["SALDIRILAR"]:
+                if saldiri_iha["id"] == drone_id:
+                    alt = saldiri_iha["alt"]
+                    break
 
             if calc_loc.get_dist(vehicle.get_pos(drone_id=drone_id), target_loc) > 50:
                 print("Hedef konumu yanlis: ", targets[drone_id])
@@ -118,10 +117,7 @@ threading.Thread(target=gimbal_handler.keyboard_controller, daemon=True).start()
 
 #? Uçuş hazırlıkları
 ALT_1 = config["GOZLEMCI"]["alt"]
-ALT_2 = config["SALDIRI1"]["alt"]
 DRONE_1_ID = int(config["GOZLEMCI"]["id"])
-DRONE_2_ID = int(config["SALDIRI1"]["id"])
-target_loc = []
 
 vehicle = Vehicle(config["CONN-PORT"])
 
