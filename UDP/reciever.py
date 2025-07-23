@@ -1,6 +1,6 @@
 import socket, struct, cv2, numpy as np, time, sys
 
-UDP_IP, UDP_PORT = sys.argv[1], int(sys.argv[2])
+UDP_IP, UDP_PORT = "0.0.0.0", int(sys.argv[1])
 BUFFER_SIZE = 65536
 HEADER_FMT = '<LHB'
 HEADER_SIZE = struct.calcsize(HEADER_FMT)

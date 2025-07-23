@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup as bs
 
 class Vehicle():
-    def __init__(self, address: str=None, baud: int=57600, autoreconnect: bool=True, drone_id: int=1, on_flight: bool=True):
+    def __init__(self, address: str=None, stop_event: threading.Event=None, baud: int=57600, autoreconnect: bool=True, drone_id: int=1, on_flight: bool=True):
         try:
             address = self.check_address(address=address)
             self.vehicle = mavutil.mavlink_connection(device=address, baud=baud, autoreconnect=autoreconnect)
@@ -19,6 +19,10 @@ class Vehicle():
             self.drone_ids = []
             # 1 Metre
             self.DEG = 0.00001172485
+            if stop_event == None:
+                self.stop_event = threading.Event()
+            else:
+                self.stop_event = stop_event
 
             self.TAKEOFF_POS = {}
 
@@ -64,7 +68,7 @@ class Vehicle():
         try:
             self.vehicle.wait_heartbeat(blocking=True, timeout=2)
             first_drone_ids = self.drone_ids
-            while time.time() - start_time < 3:
+            while not self.stop_event.is_set() and time.time() - start_time < 3:
                 msg = self.vehicle.recv_match(type='HEARTBEAT', blocking=True)
                 if msg:
                     drone_ids.add(msg.get_srcSystem())
@@ -94,7 +98,7 @@ class Vehicle():
                 Exception(f"Drone bağlantısı yok: {drone_id}")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 message = self.vehicle.recv_match(type='VFR_HUD', blocking=True)
 
                 if self.parse_message(message)[1] == drone_id:
@@ -231,7 +235,7 @@ class Vehicle():
                 Exception(f"Drone bağlantısı yok: {drone_id}")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 message = self.vehicle.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
 
                 if self.parse_message(message)[1] == drone_id:
@@ -257,7 +261,7 @@ class Vehicle():
                 Exception(f"Drone bağlantısı yok: {drone_id}")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 message = self.vehicle.recv_match(type=f'MISSION_{miss_command}', blocking=True)
                 
                 if self.parse_message(message)[1] == drone_id:
@@ -284,7 +288,7 @@ class Vehicle():
                 Exception(f"Drone bağlantısı yok: {drone_id}")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 message = self.vehicle.recv_match(type='ATTITUDE', blocking=True)
 
                 if self.parse_message(message)[1] == drone_id:
@@ -421,7 +425,7 @@ class Vehicle():
             center_lat = center_loc[0]
             center_lon = center_loc[1]
 
-            while i <= (area_meter / distance_meter):
+            while not self.stop_event.is_set() and i <= (area_meter / distance_meter):
                 last_waypoint = (center_lat + (met + distance_meter * i) * self.DEG, center_lon + (met * sign) * self.DEG)
                 sign *= -1
                 i += 1
@@ -476,7 +480,7 @@ class Vehicle():
             print(f"{drone_id}>> kalkış konumuna ({takeoff_pos}) dönüyor...")
 
             start_time = time.time()
-            while self.on_location(loc=takeoff_pos, seq=0, sapma=1, drone_id=drone_id) == False:
+            while not self.stop_event.is_set() and self.on_location(loc=takeoff_pos, seq=0, sapma=1, drone_id=drone_id) == False:
                 if time.time() - start_time > 2:
                     print(f"{drone_id}>> Kalkış konumuna dönüyor...")
                     start_time = time.time()
@@ -526,7 +530,7 @@ class Vehicle():
 
             print(f"{drone_id}>> Takeoff alınıyor...")
             mode = self.get_mode(drone_id=drone_id)
-            while current_alt < alt * 0.9:
+            while not self.stop_event.is_set() and current_alt < alt * 0.9:
                 current_alt = self.get_pos(drone_id=drone_id)[2]
                 current_mode = self.get_mode(drone_id=drone_id)
                 if time.time() - start_time > 2:
@@ -585,7 +589,7 @@ class Vehicle():
                 Exception(f"{drone_id}>> bağlı değil")
                 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 msg = self.vehicle.recv_match(type="HEARTBEAT", blocking=True)
 
                 if self.parse_message(msg)[1] == drone_id:
@@ -622,7 +626,7 @@ class Vehicle():
                 Exception(f"Drone bağlantısı yok: {drone_id}")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 msg = self.vehicle.recv_match(type="HEARTBEAT", blocking=True)
                 
                 if self.parse_message(msg)[1] == drone_id:
@@ -742,7 +746,7 @@ class Vehicle():
     # Hata mesajlarını okuma
     def error_messages(self):
         start_time = time.time()
-        while True:
+        while not self.stop_event.is_set():
             msg = self.vehicle.recv_match(type="STATUSTEXT", blocking=True)
             
             if msg:
@@ -827,7 +831,7 @@ class Vehicle():
             print(f"{drone_id}>> Etrafında dönülüyor...")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 yaw_speed = self.yaw_speed(drone_id=drone_id)
                 if abs(yaw_speed) >= 0.1:
                     not_turning = False
@@ -855,7 +859,7 @@ class Vehicle():
                 Exception(f"Drone bağlantısı yok: {drone_id}")
 
             start_time = time.time()
-            while True:
+            while not self.stop_event.is_set():
                 msg = self.vehicle.recv_match(type='ATTITUDE', blocking=True)
                 
                 if self.parse_message(msg)[1] == drone_id:

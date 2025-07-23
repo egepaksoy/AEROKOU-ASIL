@@ -3,7 +3,7 @@
     "GOZLEMCI":
     {
         "id": 4,
-        "alt": 4,
+        "alt": 5,
         "alcalma_alt": 3
     },
     "SALDIRILAR":
@@ -24,14 +24,42 @@
             "alcalma_alt": 3,
             "UDP":
             {
-                "ip": "192.168.0.170",
+                "ip": "192.168.0.140",
                 "port": 9997
             }
         }
     ],
+    "ARM-BUTTONS":
+    {
+        "ARM1": 4,
+        "ARM2": 1,
+        "ARM3": 3
+    },
+    "DRONES":
+    [
+        {
+            "id": 4,
+            "alt": 5,
+            "arm": "ARM1",
+            "miss": "gozlemci"
+        },
+        {
+            "id": 3,
+            "alt": 5,
+            "arm": "ARM3",
+            "miss": "saldiri"
+        },
+        {
+            "id": 1,
+            "alt": 5,
+            "arm": "ARM2",
+            "miss": "saldiri"
+        }
+
+    ],
     "TCP":
     {
-        "ip": "192.168.0.120",
+        "ip": "192.168.0.140",
         "port": 9998
     },
     "UDP":
@@ -47,6 +75,6 @@
     },
     "ARDUINO":
     {
-        "port": "com3"
+        "port": "com5"
     }
 }

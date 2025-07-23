@@ -1,12 +1,12 @@
 {
-    "CONN-STR": "udp:172.22.160.1:14550",
+    "CONN-STR": "/dev/ttyACM0",
     "DRONE":
     {
         "id": 1,
-        "alt": 8,
+        "alt": 7,
         "loc": [-35.36339086, 149.17055468],
-        "area_meter": 10,
-        "distance_meter": 2,
+        "area_meter": 5,
+        "distance_meter": 1,
         "tarama_sayisi": 1
     },
     "UDP-PORT": 9999,

@@ -9,17 +9,41 @@ class GimbalHandler:
     def __init__(self, server, stop_event):
         self.server = server
         self.stop_event = stop_event
+        self.movement_command = 0 #Ana koddan degisitirilerek hareket saglanir
     
     def request_data(self):
         self.server.send_data("2|2\n")
 
-    def gimbal_selecter(self, stop_event: threading.Event, vehicle, DRONE_ID, server: tcp_handler.TCPServer, targets: dict, target_locker: threading.Lock, selecter_started: threading.Event):
+    def gimbal_selecter(self, stop_event: threading.Event, vehicle, DRONE_ID, server: tcp_handler.TCPServer, targets: dict, target_locker: threading.Lock, selecter_started: threading.Event, keyboard: bool=True, yki_monitor=None):
         print("Hedef Seçimi başlatıldı")
-        selecter_started.set()
         while not stop_event.is_set():
             tcp_data = None
+            selecter_pressed = False
+            deleter_pressed = False
+            start_miss = False
+
+            if yki_monitor != None and not keyboard:
+                button_states = yki_monitor.get_target_select_status()
+
+                if button_states["SELECT"]:
+                    selecter_pressed = True
+                elif button_states["DELETE"]:
+                    deleter_pressed = True
+                elif button_states["START"]:
+                    start_miss = True
+            else:
+                if keyboard.is_pressed("x"):
+                    selecter_pressed = True
+                elif keyboard.is_pressed("c"):
+                    deleter_pressed = True
+                elif keyboard.is_pressed("z"):
+                    start_miss = True
+
+
             # Hedef secme
-            if keyboard.is_pressed("x"):
+            if selecter_pressed:
+                selecter_pressed = False
+
                 print("Hedef secme tusuna basildi")
                 self.request_data()
 
@@ -39,23 +63,25 @@ class GimbalHandler:
                         break
                 for drone_id in vehicle.drone_ids:
                     if drone_id != DRONE_ID and drone_id not in targets:
-                        if calc_loc.get_dist(vehicle.get_pos(drone_id=drone_id), target_loc) < min_drone_dist:
-                            min_dist_drone_id = drone_id
+                        #if calc_loc.get_dist(vehicle.get_pos(drone_id=drone_id), target_loc) < min_drone_dist:
+                            #min_dist_drone_id = drone_id
+                        min_dist_drone_id = drone_id
 
-                if min_dist_drone_id == None:
-                    print("min_dist_drone_id atanmadi")
-                    min_dist_drone_id = 3
                 new_target = {"cls": target_name, "loc": target_loc}
                 with target_locker:
                     targets[min_dist_drone_id] = new_target
 
                 print(f"Hedef {target_name} {min_dist_drone_id} dronuna atandi")
 
+
             # Heddef silme
-            elif keyboard.is_pressed("c"):
+            elif deleter_pressed:
+                deleter_pressed = False
+
                 print("Hedef silme tusuna basildi")
                 deleted = False
 
+                #! Burası otomatik hedef silme icin
                 #self.request_data()
 
                 #tcp_data = server.get_data()
@@ -77,6 +103,7 @@ class GimbalHandler:
 
                         #deleted = True
                         #break
+                #! Bitti
 
                 if not deleted:
                     target_name = input("Silinecek Hedef adini giriniz: ")
@@ -91,7 +118,8 @@ class GimbalHandler:
                     print("Hedef silinemedi tekrar deneyin")
 
             # Cikis
-            elif keyboard.is_pressed("z"):
+            elif start_miss:
+                start_miss = False
                 print("Hedef secme kapatildi")
                 break
 
@@ -127,7 +155,7 @@ class GimbalHandler:
 
             time.sleep(0.01)
 
-    def joystick_controller(self, arduino):
+    def joystick_controller(self, yki_monitor):
         ters = -1
 
         while not self.stop_event.is_set():
@@ -135,26 +163,27 @@ class GimbalHandler:
             ser_x = 0
             ser_y = 0
 
-            joystick_data = arduino.read_value()
-            if len(joystick_data.split("|")) == 3:
+            # Hedef seçme veya silme tusuna basildiysa
+            if yki_monitor.get_target_select_status()["DELETE"] or yki_monitor.get_target_select_status()["SELECT"]:
                 ser_x = 2
                 ser_y = 2
 
-            elif joystick_data != None:
-                if "|" in joystick_data:
-                    joystick_data = joystick_data.strip()
-
-                    if int(joystick_data.split("|")[0]) > 0:
+            # Joystick hareket ettirildiyse
+            else:
+                joystick_data = yki_monitor.get_joystick_values()
+                if joystick_data != None:
+                    # TODO: buradaki > 0 işaretlerindeki 0'ı arduinodan al (arduinoda yarıdan büyük ise 1 küçük ise -1 yarısı kadar ise 0 dondur)
+                    if int(joystick_data["JOY_X"]) > 0:
                         ser_x = 1 * ters
-                    elif int(joystick_data.split("|")[0]) < 0:
+                    elif int(joystick_data["JOY_X"]) < 0:
                         ser_x = -1 * ters
 
-                    if int(joystick_data.split("|")[1]) > 0:
+                    if int(joystick_data["JOY_Y"]) > 0:
                         ser_y = 1 * ters
-                    elif int(joystick_data.split("|")[1]) < 0:
+                    elif int(joystick_data["JOY_Y"]) < 0:
                         ser_y = -1 * ters
 
-            write_data = f"{ser_x}|{ser_y}\n"            
+            write_data = f"{ser_x}|{ser_y}\n"
             self.server.send_data(write_data)
 
             time.sleep(0.01)

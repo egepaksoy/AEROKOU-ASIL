@@ -3,11 +3,11 @@ import cv2
 import json
 import threading
 from flask import Flask
-#from picamera2 import Picamera2
+from picamera2 import Picamera2
 import sys
 
 from pymavlink_custom.pymavlink_custom import Vehicle
-#!from libs.mqtt_controller import magnet_control, rotate_servo, cleanup
+from libs.mqtt_controller import magnet_control, rotate_servo, cleanup
 from libs.image_handler import image_recog_flask
 from libs.calculater import get_distance
 
@@ -59,12 +59,10 @@ def drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_sta
         time.sleep(0.5)
 
     time.sleep(3)
-    '''#!
     if miknatis == 2:
         magnet_control(True, False)
     else:
         magnet_control(False, True)
-    '''
     print(f"mıknatıs {miknatis} kapatıldı")
     time.sleep(2)
 
@@ -87,25 +85,26 @@ sonra_birakilcak_obj = None
 sonra_birakilcak_pos = None
 
 # PiCamera2'yi başlat ve yapılandır
-'''
 picam2 = Picamera2()
 picam2.configure(picam2.create_video_configuration(main={"format": "RGB888", "size": (640, 480)}))
 picam2.start()
 time.sleep(2)  # Kamera başlatma süresi için bekle
 '''
 cap = cv2.VideoCapture(0)
+'''
 
 # Görüntü işleme
 app = Flask(__name__)
 broadcast_started = threading.Event()
 port = config["UDP-PORT"]
 # Raspberry ile
-#threading.Thread(target=image_recog_flask, args=(picam2, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
+threading.Thread(target=image_recog_flask, args=(picam2, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
 # Windows ile
-threading.Thread(target=image_recog_flask, args=(cap, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
+#threading.Thread(target=image_recog_flask, args=(cap, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
 
 # Erkenden miknatisi calistirma
-#!magnet_control(True, True)
+magnet_control(True, True)
+input("Mıknatıslar bağlandığında ENTER tuşuna basın")
 
 # Drone ayarlamalari
 vehicle = Vehicle(config["CONN-STR"])
@@ -151,7 +150,7 @@ try:
         raise ValueError("Drone Yuksekligi kontrol et")
 
 
-    #!rotate_servo(0)
+    rotate_servo(0)
     print("servo duruyor")
 
     # Takeoff
@@ -184,7 +183,7 @@ try:
                 
                 if (sira == 1 or (len(dropped_objects) != 0 and obj not in dropped_objects)):
                     drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_state_lock, shared_state)
-                    #!rotate_servo(0)
+                    rotate_servo(0)
                     
                     if len(dropped_objects) == 2:
                         print(f"{DRONE_ID}>> Drone hedeflere yük bıraktı")
@@ -210,7 +209,7 @@ try:
                     sira = objects[obj]["sira"]
 
                     drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_state_lock, shared_state)
-                    #!rotate_servo(0)
+                    rotate_servo(0)
                     
                     if len(dropped_objects) == 2:
                         print(f"{DRONE_ID}>> Drone hedeflere yük bıraktı")
@@ -225,7 +224,7 @@ try:
                         start_time = time.time()
         
         if vehicle.on_location(loc=drone_locs[current_loc], seq=0, sapma=1, drone_id=DRONE_ID):
-            #!rotate_servo(0)
+            rotate_servo(0)
 
             print(f"{DRONE_ID}>> wp: {current_loc + 1}/{len(drone_locs)} ulasildi")
 
@@ -267,7 +266,7 @@ try:
 
     print(f"Algilanan objeler: {dropped_objects}")
 
-    #!rotate_servo(0)
+    rotate_servo(0)
     print(f"{DRONE_ID}>> Kalkış konumuna gidiyor")
     vehicle.set_mode(mode="GUIDED", drone_id=DRONE_ID)
     vehicle.go_to(loc=home_pos, alt=ALT, drone_id=DRONE_ID)
