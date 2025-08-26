@@ -22,12 +22,26 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
         return all(abs(s - mean) / mean < tolerance for s in sides)
 
     # Renk aralıkları
-    lower_red1 = np.array([0, 100, 100])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([160, 100, 100])
-    upper_red2 = np.array([179, 255, 255])
-    lower_blue = np.array([100, 100, 100])
-    upper_blue = np.array([130, 255, 255])
+    if type(cam).__name__ == "VideoCapture":
+        lower_red1 = np.array([0, 100, 100])
+        upper_red1 = np.array([10, 255, 255])
+        lower_red2 = np.array([160, 100, 100])
+        upper_red2 = np.array([179, 255, 255])
+        lower_blue = np.array([100, 100, 100])
+        upper_blue = np.array([130, 255, 255])
+    
+        red_bg = (0, 0, 255)
+        blue_bg = (255, 0, 0)
+    else:
+        lower_red1 = np.array([100, 100, 0])
+        upper_red1 = np.array([255, 255, 10])
+        lower_red2 = np.array([100, 100, 160])
+        upper_red2 = np.array([255, 255, 179])
+        lower_blue = np.array([100, 100, 100])
+        upper_blue = np.array([255, 255, 130])
+        
+        red_bg = (0, 0, 255)
+        blue_bg = (255, 0, 0)
 
     @app.route('/')
     def video():
@@ -36,6 +50,9 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
             frame_lock = threading.Lock()
 
             broadcast_started.set()
+
+            algilanan_obj = []
+
             while not stop_event.is_set():
                 # 1. Kamera görüntüsü al ve çevir
                 if type(cam).__name__ == "VideoCapture":
@@ -57,8 +74,8 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
                 blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
                 for color_mask, shape_name, target_sides, color in [
-                    (red_mask, "Ucgen", 3, (0, 0, 255)),
-                    (blue_mask, "Altigen", 6, (255, 0, 0))
+                    (red_mask, "Ucgen", 3, red_bg),
+                    (blue_mask, "Altigen", 6, blue_bg)
                 ]:
                     contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                     for cnt in contours:
@@ -70,7 +87,9 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
                             cv2.putText(frame, shape_name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
                             detected_obj = shape_name
                             object_pos = (x, y)
-                            print(detected_obj)
+                            if detected_obj not in algilanan_obj:
+                                print(detected_obj)
+                                algilanan_obj.append(detected_obj)
 
                 if detected_obj != "":
                     with shared_state_lock:

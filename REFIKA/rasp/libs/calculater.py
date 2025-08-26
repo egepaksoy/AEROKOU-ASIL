@@ -44,4 +44,4 @@ def get_position(camera_distance, total_yaw, current_loc):
     return hedef.latitude, hedef.longitude
 
 def get_distance(loc1, loc2):
-    return distance(loc1, loc2).m
+    return distance(loc1[:2], loc2[:2]).m

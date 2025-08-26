@@ -85,20 +85,20 @@ sonra_birakilcak_obj = None
 sonra_birakilcak_pos = None
 
 # PiCamera2'yi başlat ve yapılandır
+'''
 picam2 = Picamera2()
 picam2.configure(picam2.create_video_configuration(main={"format": "RGB888", "size": (640, 480)}))
 picam2.start()
 time.sleep(2)  # Kamera başlatma süresi için bekle
 '''
 cap = cv2.VideoCapture(0)
-'''
 
 # Görüntü işleme
 app = Flask(__name__)
 broadcast_started = threading.Event()
 port = config["UDP-PORT"]
 # Raspberry ile
-threading.Thread(target=image_recog_flask, args=(picam2, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
+threading.Thread(target=image_recog_flask, args=(cap, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
 # Windows ile
 #threading.Thread(target=image_recog_flask, args=(cap, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
 
@@ -172,6 +172,7 @@ try:
     while not stop_event.is_set():
         with shared_state_lock:
             obj = shared_state["last_object"]
+            obj_pos = shared_state_lock["object_pos"]
 
         if obj:
             if obj not in dropped_objects and obj != sonra_birakilcak_obj:

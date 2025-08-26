@@ -7,7 +7,7 @@ from flask import Flask
 import sys
 
 from pymavlink_custom.pymavlink_custom import Vehicle
-#!from libs.mqtt_controller import magnet_control, rotate_servo, cleanup
+#from libs.mqtt_controller import magnet_control, rotate_servo, cleanup
 from libs.image_handler import image_recog_flask
 from libs.calculater import get_distance, calculate_ground_distance, get_position
 
@@ -54,12 +54,45 @@ def failsafe(vehicle, home_pos=None):
     print(f"{vehicle.drone_ids} id'li Drone(lar) Failsafe aldi")
 
 def drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_state_lock, shared_state):
+    print(f"{DRONE_ID}>> algilanan konuma gidiyor...")
     vehicle.go_to(loc=location, alt=ALT, drone_id=DRONE_ID)
     while not stop_event.is_set() and not vehicle.on_location(loc=location, seq=0, sapma=1, drone_id=DRONE_ID):
         time.sleep(0.5)
 
-    time.sleep(3)
-    '''#!
+    start_time = time.time()
+    while time.time() - start_time < 3:
+        time.sleep(0.05)
+
+    start_time = time.time()
+    while not stop_event.is_set() and time.time() - start_time < 5:
+        with shared_state_lock:
+            obj = shared_state["last_object"]
+            obj_pos = shared_state["object_pos"]
+
+        if obj != None:
+            break
+
+        time.sleep(0.05)
+
+    print(f"{DRONE_ID}>> Hedef konumu hesaplanıyor")
+    drone_pos = vehicle.get_pos(DRONE_ID)
+    yaw = vehicle.get_yaw(drone_id=DRONE_ID)
+    camera_distance = calculate_ground_distance(drone_height=drone_pos[2], xy_center=obj_pos, xy_screen=(640, 480))
+    calc_loc = get_position(camera_distance=camera_distance, total_yaw=yaw, current_loc=drone_pos)
+    dist = get_distance(location, drone_pos)
+
+    print(f"{DRONE_ID}>> Konum dronedan {dist} metre uzakta")
+
+    vehicle.go_to(loc=calc_loc, alt=ALT, drone_id=DRONE_ID)
+    while not stop_event.is_set() and not vehicle.on_location(loc=calc_loc, seq=0, sapma=1, drone_id=DRONE_ID):
+        time.sleep(0.5)
+
+    print(f"{DRONE_ID}>> Drone {obj} üzerine geldi yuk birakiliyor")
+
+    start_time = time.time()
+    while time.time() - start_time < 3:
+        time.sleep(0.05)
+    '''
     if miknatis == 2:
         magnet_control(True, False)
     else:
@@ -72,10 +105,11 @@ def drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_sta
 
     with shared_state_lock:
         shared_state["last_object"] = None  # tekrar tetiklenmesini engelle
-
+        shared_state["object_pos"] = None  # tekrar tetiklenmesini engelle
+        
 
 stop_event = threading.Event()
-config = json.load(open("./config.json", "r"))
+config = json.load(open("./test-config.json", "r"))
 
 # Algilananlari kullanma
 shared_state = {"last_object": None, "object_pos": None}
@@ -100,12 +134,13 @@ app = Flask(__name__)
 broadcast_started = threading.Event()
 port = config["UDP-PORT"]
 # Raspberry ile
-#threading.Thread(target=image_recog_flask, args=(picam2, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
-# Windows ile
 threading.Thread(target=image_recog_flask, args=(cap, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
+# Windows ile
+#threading.Thread(target=image_recog_flask, args=(cap, port, broadcast_started, stop_event, shared_state, shared_state_lock), daemon=True).start()
 
 # Erkenden miknatisi calistirma
 #!magnet_control(True, True)
+input("Mıknatıslar bağlandığında ENTER tuşuna basın")
 
 # Drone ayarlamalari
 vehicle = Vehicle(config["CONN-STR"])
@@ -133,7 +168,7 @@ try:
     pos = (pos[0], pos[1], ALT)
     merkez_dist = get_distance(pos, merkez)
 
-    if merkez_dist > 80:
+    if merkez_dist > 125:
         print(f"Tarama merkezi dronedan {merkez_dist} metre uzakta konumu kontrol et")
         raise ValueError("Merkez WP Drondan çok uzak")
     else:
@@ -141,7 +176,7 @@ try:
     
     for loc in drone_locs:
         dist = get_distance(pos, loc)
-        if dist > 100:
+        if dist > 250:
             print(f"Tarama waypoint'i dronedan {dist} metre uzakta konumu kontrol et")
             raise ValueError("WP Drondan çok uzak")
 
@@ -173,20 +208,12 @@ try:
     while not stop_event.is_set():
         with shared_state_lock:
             obj = shared_state["last_object"]
-            obj_pos = shared_state_lock["object_pos"]
+            obj_pos = shared_state["object_pos"]
 
         if obj:
             if obj not in dropped_objects and obj != sonra_birakilcak_obj:
                 print(obj)
-                drone_pos = vehicle.get_pos(drone_id=DRONE_ID)
-                yaw = vehicle.get_yaw(drone_id=DRONE_ID)
-                camera_distance = calculate_ground_distance(drone_height=drone_pos[2], xy_center=obj_pos, xy_screen=(640, 480))
-                location = get_position(camera_distance=camera_distance, total_yaw=yaw, current_loc=drone_pos)
-                dist = get_distance(location, drone_pos)
-
-                if dist > 10:
-                    print(f"Algilanan {obj} dronedan {dist} metre uzakta kod kapatildi")
-                    raise ValueError(f"Algilanan nesne dronedan fazla uzakta")
+                location = vehicle.get_pos(drone_id=DRONE_ID)
 
                 sira = objects[obj]["sira"]
                 miknatis = objects[obj]["miknatis"]
@@ -218,7 +245,7 @@ try:
                     miknatis = objects[obj]["miknatis"]
                     sira = objects[obj]["sira"]
 
-                    drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_state_lock, shared_state)
+                    #!drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_state_lock, shared_state)
                     #!rotate_servo(0)
                     
                     if len(dropped_objects) == 2:
@@ -261,8 +288,7 @@ try:
 
                     vehicle.go_to(loc=drone_locs[current_loc], alt=ALT, drone_id=DRONE_ID)
 
-                # Tarama bittiyse ve atilcak siradaki yuk kalmadiysa gorevi bitir
-                elif sonra_birakilcak_obj == None and sonra_birakilcak_pos == None:
+                else:
                     print(f"{DRONE_ID}>> Drone taramayı bitirdi")
                     break
 
@@ -274,7 +300,7 @@ try:
 
         time.sleep(0.02)
 
-    print(f"Algilanan objeler: {dropped_objects}")
+    print(f"Birakilan objeler: {dropped_objects}")
 
     #!rotate_servo(0)
     print(f"{DRONE_ID}>> Kalkış konumuna gidiyor")
@@ -304,5 +330,5 @@ except Exception as e:
 finally:
     vehicle.vehicle.close()
     input("Servoyu kapatmak için Enter'a basın")
-    cleanup()
+    #!cleanup()
     print("GPIO temizlendi, bağlantı kapatıldı")
