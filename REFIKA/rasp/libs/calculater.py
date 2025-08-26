@@ -35,7 +35,18 @@ def calculate_ground_distance(
     # Öklidyen uzaklık (drone altından olan yatay mesafe)
     ground_distance = math.sqrt(ground_x**2 + ground_y**2)
 
+
     return ground_distance
+
+def calculate_image_yaw(xy_center, xy_screen):
+    image_width, image_height = xy_screen
+    pixel_x, pixel_y = xy_center
+
+    x_dist = pixel_x - (image_width / 2)
+    y_dist = (image_height / 2) - pixel_y
+
+    return math.degrees(math.atan(x_dist / y_dist))
+
 
 def get_position(camera_distance, total_yaw, current_loc):
     start_loc = Point(current_loc[0], current_loc[1])

@@ -63,21 +63,50 @@ def drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_sta
     while time.time() - start_time < 3:
         time.sleep(0.05)
 
-    print(f"{DRONE_ID}>> Drone {obj} üzerine geldi yuk birakiliyor")
-
     start_time = time.time()
-    while time.time() - start_time < 3:
-        time.sleep(0.05)
-    '''
-    if miknatis == 2:
-        magnet_control(True, False)
-    else:
-        magnet_control(False, True)
-    '''
-    print(f"mıknatıs {miknatis} kapatıldı")
-    time.sleep(2)
+    while not stop_event.is_set() and time.time() - start_time < 5:
+        with shared_state_lock:
+            obj = shared_state["last_object"]
+            obj_pos = shared_state["object_pos"]
 
-    dropped_objects.append(obj)
+        if obj != None:
+            break
+
+        time.sleep(0.05)
+
+    if obj != None and obj_pos != None:
+        print(f"{DRONE_ID}>> Hedef konumu hesaplanıyor")
+        drone_pos = vehicle.get_pos(DRONE_ID)
+        yaw = vehicle.get_yaw(drone_id=DRONE_ID)
+        camera_distance = calculate_ground_distance(drone_height=drone_pos[2], xy_center=obj_pos, xy_screen=(640, 480))
+        camera_yaw = calculate_image_yaw(xy_center=obj_pos, xy_screen=(640, 480))
+        calc_loc = get_position(camera_distance=camera_distance, total_yaw=yaw + camera_yaw, current_loc=drone_pos)
+        dist = get_distance(location, drone_pos)
+
+        print(f"{DRONE_ID}>> Konum dronedan {dist} metre uzakta")
+
+        vehicle.go_to(loc=calc_loc, alt=ALT, drone_id=DRONE_ID)
+        while not stop_event.is_set() and not vehicle.on_location(loc=calc_loc, seq=0, sapma=1, drone_id=DRONE_ID):
+            time.sleep(0.5)
+
+        print(f"{DRONE_ID}>> Drone {obj} üzerine geldi yuk birakiliyor")
+
+        start_time = time.time()
+        while time.time() - start_time < 3:
+            time.sleep(0.05)
+        '''
+        if miknatis == 2:
+            magnet_control(True, False)
+        else:
+            magnet_control(False, True)
+        '''
+        print(f"mıknatıs {miknatis} kapatıldı")
+        time.sleep(2)
+
+        dropped_objects.append(obj)
+    
+    else:
+        print(f"{DRONE_ID}>> Obje bulunamadi tarama devam ediyor")
 
     with shared_state_lock:
         shared_state["last_object"] = None  # tekrar tetiklenmesini engelle
@@ -189,16 +218,7 @@ try:
         if obj:
             if obj not in dropped_objects and obj != sonra_birakilcak_obj:
                 print(obj)
-                print(f"{DRONE_ID}>> Hedef konumu hesaplanıyor")
-
-                drone_pos = vehicle.get_pos(drone_id=DRONE_ID)
-                yaw = vehicle.get_yaw(drone_id=DRONE_ID)
-                camera_distance = calculate_ground_distance(drone_height=drone_pos[2], xy_center=obj_pos, xy_screen=(640, 480))
-                camera_yaw = calculate_image_yaw(xy_center=obj_pos, xy_screen=(640, 480))
-                location = get_position(camera_distance=camera_distance, total_yaw=yaw + camera_yaw, current_loc=drone_pos)
-                dist = get_distance(location, drone_pos)
-
-                print(f"{DRONE_ID}>> Konum dronedan {dist} metre uzakta")
+                location = vehicle.get_pos(drone_id=DRONE_ID)
 
                 sira = objects[obj]["sira"]
                 miknatis = objects[obj]["miknatis"]
