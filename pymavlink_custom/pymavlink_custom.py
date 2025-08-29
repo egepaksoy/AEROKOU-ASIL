@@ -183,12 +183,24 @@ class Vehicle():
             waypoint_count = msg.count
 
             waypoints = []
+            tur = 0
             for i in range(waypoint_count):
+                if i == 0:
+                    continue
                 self.vehicle.mav.mission_request_int_send(drone_id, self.vehicle.target_component, i)
                 message = self.vehicle.recv_match(type='MISSION_ITEM_INT', blocking=True)
 
                 if self.parse_message(message)[1] == drone_id:
-                    waypoints.append((msg.x / 1e7, msg.y / 1e7, msg.z / 1e3))  # Latitude ve Longitude değerleri 1e7 ile ölçeklendirilmiştir
+                    if int(message.command) == 177:
+                        tur = 0
+                        while tur < int(message.param2):
+                            wp = int(message.param1) - 1
+                            while wp < i - 1:
+                                waypoints.append(waypoints[wp])
+                                wp += 1
+                            tur += 1
+                    elif int(message.command) == 16:
+                        waypoints.append((message.x / 1e7, message.y / 1e7, message.z))  # Latitude ve Longitude değerleri 1e7 ile ölçeklendirilmiştir
 
             return waypoints
 
