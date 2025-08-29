@@ -1,14 +1,16 @@
 {
-    "CONN-STR": "/dev/ttyACM0",
+    "CONN-STR": "udp:172.22.160.1:14550",
     "DRONE":
     {
         "id": 1,
-        "alt": 7,
-        "loc": [40.711, 30.02],
+        "alt": 5,
+        "loc": [-35.36312474, 149.16520408],
         "area_meter": 5,
         "distance_meter": 1,
         "tarama_sayisi": 1
     },
+    "ORTA": 0.38,
+    "FOV": [62.2, 48.8],
     "UDP-PORT": 9999,
     "OBJECTS": {"Altigen": {"sira": 1, "miknatis": 2}, "Ucgen": {"sira": 2, "miknatis": 1}}
 }

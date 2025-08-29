@@ -6,7 +6,7 @@ from flask import Flask, Response
 
 last_frame = None
 
-def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, shared_state_lock):
+def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, shared_state_lock, oran=0.3):
     app = Flask(__name__)
 
     def is_equilateral(approx, tolerance=0.15):
@@ -46,6 +46,14 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
     @app.route('/')
     def video():
         def gen_frames():
+            def visualize_box(frame, screen_res, orta_box_color = (255, 0, 255)):
+                x1 = (screen_res[0] - (screen_res[0] * oran)) / 2
+                x2 = screen_res[0] - x1
+                y1 = (screen_res[1] - (screen_res[1] * oran)) / 2
+                y2 = screen_res[1] - y1
+
+                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), orta_box_color, 1)
+
             global last_frame
             frame_lock = threading.Lock()
 
@@ -57,9 +65,12 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
                 # 1. Kamera görüntüsü al ve çevir
                 if type(cam).__name__ == "VideoCapture":
                     _, frame = cam.read()
+                    res = frame.shape[:2]
+                    screen_res = (int(res[1]), int(res[0]))
                 else:
                     frame = cam.capture_array()
                     frame = cv2.flip(frame, -1)
+                    screen_res = (frame.shape[:2][1], frame.shape[:2][0])
 
                 detected_obj = ""
                 object_pos = None
@@ -95,6 +106,14 @@ def image_recog_flask(cam, port, broadcast_started, stop_event, shared_state, sh
                     with shared_state_lock:
                         shared_state["last_object"] = detected_obj
                         shared_state["object_pos"] = object_pos
+                        shared_state["screen_res"] = screen_res
+                else:
+                    with shared_state_lock:
+                        shared_state["last_object"] = None
+                        shared_state["object_pos"] = None
+                        shared_state["screen_res"] = None
+                
+                visualize_box(frame, screen_res, oran)
 
                 # 3. Görüntüyü paylaş
                 with frame_lock:

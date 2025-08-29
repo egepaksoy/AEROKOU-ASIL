@@ -78,8 +78,8 @@ def drop_obj(obj, dropped_objects, miknatis, location, ALT, DRONE_ID, shared_sta
         print(f"{DRONE_ID}>> Hedef konumu hesaplanıyor")
         drone_pos = vehicle.get_pos(DRONE_ID)
         yaw = vehicle.get_yaw(drone_id=DRONE_ID)
-        camera_distance = calculate_ground_distance(drone_height=drone_pos[2], xy_center=obj_pos, xy_screen=(640, 480))
-        camera_yaw = calculate_image_yaw(xy_center=obj_pos, xy_screen=(640, 480))
+        camera_distance = calculate_ground_distance(drone_height=drone_pos[2], xy_center=obj_pos, xy_screen=res, xy_fov=(102, 67))
+        camera_yaw = calculate_image_yaw(xy_center=obj_pos, xy_screen=res)
         calc_loc = get_position(camera_distance=camera_distance, total_yaw=yaw + camera_yaw, current_loc=drone_pos)
         dist = get_distance(location, drone_pos)
 
@@ -127,7 +127,22 @@ sonra_birakilcak_pos = None
 
 # PiCamera2'yi başlat ve yapılandır
 picam2 = Picamera2()
-picam2.configure(picam2.create_video_configuration(main={"format": "RGB888", "size": (640, 480)}))
+preview_config = picam2.create_preview_configuration()
+picam2.configure(preview_config)
+
+# Kameranın bütün video modlarını listele
+'''
+modes = picam2.sensor_modes
+for mode in modes:
+    print(mode)
+'''
+    
+res = preview_config["raw"]["size"]
+crop_size = 2
+res = (int(res[0] / 2), int(res[1] / 2))
+print(f"\n\nAktif çözünürlük: {res}\n\n")
+
+picam2.configure(picam2.create_video_configuration(main={"format": "RGB888", "size": res}))
 picam2.start()
 time.sleep(2)  # Kamera başlatma süresi için bekle
 '''
@@ -196,6 +211,7 @@ try:
 
     # Takeoff
     vehicle.set_mode("GUIDED", drone_id=DRONE_ID)
+    time.sleep(1)
     vehicle.arm_disarm(True, drone_id=DRONE_ID)
     vehicle.takeoff(ALT, drone_id=DRONE_ID)
 
